@@ -106,71 +106,71 @@ tTimer1S:         EQU 50000    ;Base de tiempo de 1 segundo (100 mS x 10 / 20us)
 
 
 ; ----------------------------- TAREA_TECLADO ----------------------------------
-MAX_TCL                 db 5
-Tecla                   db $FF
-Tecla_IN                db $FF
-Cont_TCL                db $00
-Patron                  db $00
-Est_Pres_TCL            ds 2
+MAX_TCL                 db 5            ;1000
+Tecla                   db $FF          ;1001
+Tecla_IN                db $FF          ;1002
+Cont_TCL                db $00          ;1003
+Patron                  db $00          ;1004
+Est_Pres_TCL            ds 2            ;1006
                                 org $1010
-Num_Array               db $FF,$FF,$FF,$FF,$FF
+Num_Array               db $FF,$FF,$FF,$FF,$FF         ;1010
 
 ; ---------------------------- TAREA PANTALLA_MUX ------------------------------
                                 org $1020
-EstPres_PantallaMUX     ds 2
-Dsp1                    ds 1
-Dsp2                    ds 1
-Dsp3                    ds 1
-Dsp4                    ds 1
-LEDS                    ds 1
-Cont_Dig                ds 1
-Brillo                  db 100
-BIN1                    ds 1
-BIN2                    ds 1
+EstPres_PantallaMUX     ds 2       ;1021
+Dsp1                    ds 1       ;1022
+Dsp2                    ds 1       ;1023
+Dsp3                    ds 1       ;1024
+Dsp4                    ds 1       ;1025
+LEDS                    ds 1       ;1026
+Cont_Dig                ds 1       ;1027
+Brillo                  db 100     ;1028
+;BIN1                    ds 1       ;
+;BIN2                    ds 1
 
 ; --------------------------- Subrutina CONVERSION  ----------------------------
-BCD                     ds 1
-Cont_BCD                ds 1
-BCD1                    ds 1
-BCD2                    ds 1 ;$102e
+BCD                     ds 1  ;1029
+Cont_BCD                ds 1  ;102A
+BCD1                    ds 1  ;102B
+BCD2                    ds 1  ;102C
 
 ; -------------------------------- TAREA LCD  ----------------------------------
-IniDsp                  dB $28,$28,$06,$0C,$FF ;1033
-Punt_LCD                ds 2
-CharLCD                 ds 1
-Msg_L1                  ds 2
-Msg_L2                  ds 2
-EstPres_SendLCD         ds 2
-EstPres_TareaLCD        ds 2  ;$103d
+IniDsp                  dB $28,$28,$06,$0C,$FF ;1031
+Punt_LCD                ds 2  ;1033
+CharLCD                 ds 1  ;1034
+Msg_L1                  ds 2  ;1036
+Msg_L2                  ds 2  ;1038
+EstPres_SendLCD         ds 2  ;103A
+EstPres_TareaLCD        ds 2  ;$103C
 
 ; ------------------------- TAREAS LEER_PB1, LEER_PB0 --------------------------
-Est_Pres_LeerPB0   ds 2
-Est_Pres_LeerPB1   ds 2
+Est_Pres_LeerPB0   ds 2       ;103E
+Est_Pres_LeerPB1   ds 2       ;1040
 
 ; ---------------------------- TAREA CONFIGURAR --------------------------------
-Est_Pres_TConfig  ds 2
-ValorLIM          ds 1
-Vel_LIM           dB 65
+Est_Pres_TConfig  ds 2        ;1042
+ValorLIM          ds 1        ;1043
+Vel_LIM           dB 65       ;1044
 
 ; ---------------------------- TAREA INACTIVO ---------------------------------
-Est_Pres_TInac    ds 2
+Est_Pres_TInac    ds 2        ;1046
 
 ; ----------------------------- TAREA EnServicio -------------------------------
-Est_Pres_TServ    ds 2
-Vel_Calc          ds 1
-DeltaT            ds 1
+Est_Pres_TServ    ds 2        ;1048
+Vel_Calc          ds 1        ;1049
+DeltaT            ds 1        ;104A
 
 ; ------------------------------ TAREA Brillo ----------------------------------
-Est_Pres_TBrillo   ds 2
+Est_Pres_TBrillo   ds 2       ;104C
 
 ; ------------------------------ TAREA LeerDS ----------------------------------
-Est_Pres_LeerDS    ds 2
-Temp_DS            ds 1
-Valor_DS           ds 1
+Est_Pres_LeerDS    ds 2       ;104E
+Temp_DS            ds 1       ;104F
+Valor_DS           ds 1       ;1050
 
 ; --------------------------- TAREA DesplazarLeds ------------------------------
-Est_Pres_DsplzLeds ds 2
-DplzLeds           ds 1
+Est_Pres_DsplzLeds ds 2       ;1052
+DplzLeds           ds 1       ;1053
 
 ; -------------------------------- BANDERAS ------------------------------------
                                 org $1070
@@ -301,6 +301,7 @@ Fin_Base1S        dB $FF
 ; --------------Bloque de configuración de Disp. 7 Segmentos y Led RGB----------
         Movb #$7F,DDRP    ;Habilito (pongo como salidas) PP6-PP4 (RGB LED)
                           ; y PP3-PP0 (digitos de 7 segmentos)
+        movb #$0F,PTP
 
 ; ---------------- Bloque de configuración de puerto de botones ----------------
         movb #$00,DDRH
@@ -327,7 +328,7 @@ Fin_Base1S        dB $FF
 ;                           PROGRAMA PRINCIPAL
 ;===============================================================================
 ; ------------------------- Inicialización de timers ---------------------------
-	Movw #tTimer1mS,Timer1mS
+        Movw #tTimer1mS,Timer1mS
         Movw #tTimer10mS,Timer10mS         ;Inicia los timers de bases de tiempo
         Movw #tTimer100mS,Timer100mS
         Movw #tTimer1S,Timer1S
@@ -343,6 +344,10 @@ Fin_Base1S        dB $FF
         Clr Banderas_1
         Clr Banderas_2
         Clr LEDS
+        Clr Msg_L1
+        CLR Msg_L2
+        clr Punt_LCD
+        clr CharLCD
 ; ------------------- Inicialización de punteros de próximo estado -------------
         movw #TareaLeerDS_Est1,Est_Pres_LeerDS
         ;movw #TareaInactivo_Est1,Est_Pres_TInac
@@ -365,7 +370,7 @@ Despachador_Tareas
         jsr Tarea_LCD
 skipLCD
         Jsr Tarea_Led_Testigo
-; ----------------- Aqui se colocan todas las tareas del programa de aplicacion
+
         jsr Tarea_Teclado
         Jsr Tarea_LeerPB0
         Jsr Tarea_LeerPB1
@@ -390,7 +395,7 @@ Tarea_Configurar
 
 ;========================== CONFIGURAR ESTADO 1 ================================
 TareaConfig_Est1
-
+                ;bclr Banderas_2,SecondLine
                 movw #MSG_CONFIG2,Msg_L2
                 movw #MSG_CONFIG1,Msg_L1
                 bclr Banderas_2,LCD_OK
@@ -409,7 +414,7 @@ TareaConfig_Est1
 
                 movw #TareaConfig_Est2,Est_Pres_TConfig
 return_config_est1
-		rts
+                rts
 ;========================== CONFIGURAR ESTADO 2 ================================
 TareaConfig_Est2
                 brclr Banderas_1,Array_OK,retConfig_est2
@@ -430,6 +435,7 @@ TareaConfig_Est2
                 
 est2_conf_borrartcl
                 jsr Borrar_NumArray
+                bclr Banderas_1,Array_OK
 retConfig_est2  rts
 
 ;******************************************************************************
@@ -457,10 +463,10 @@ Dip7on          brset Valor_DS,$40,Dip7_6on
                 bra retControlModo
 
 Dip7_6on        ; 1 1
-		; jsr Tarea_EnServicio
-		bclr LEDS,$01
-        	bclr LEDS,$02
-        	bset LEDS,$04
+                ; jsr Tarea_EnServicio
+                bclr LEDS,$01
+                bclr LEDS,$02
+                bset LEDS,$04
 
 retControlModo  rts
 ;******************************************************************************
@@ -559,19 +565,19 @@ ret_brillo_est3 rts
 ;                               TAREA CONVERSION
 ;******************************************************************************
 Tarea_Conversion
-                        ldaa BIN1
-                        jsr Bin_BCD_MuxP
-                        movb BCD,BCD1
+                        ;ldaa BIN1
+                        ;jsr Bin_BCD_MuxP
+                        ;movb BCD,BCD1
 
 
 
-                        ldaa BIN2
-                        jsr Bin_BCD_MuxP
-                        movb BCD,BCD2
+                        ;ldaa BIN2
+                        ;jsr Bin_BCD_MuxP
+                        ;movb BCD,BCD2
 
 
 
-                        jsr BCD_7Seg
+                        ;jsr BCD_7Seg
 
                         rts
 
@@ -909,7 +915,7 @@ borrar_na_loop
                 staa b,x
                 decb
                 bne borrar_na_loop
-	   	rts
+                   rts
 
 
 ;******************************************************************************
