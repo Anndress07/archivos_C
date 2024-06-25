@@ -54,7 +54,7 @@ LDInac           EQU $01
 ; --------------------------- TAREA EnServicio ---------------------------------
 
 LDEnServ          EQU $04
-;tTimerVel         EQU
+tTimerVel         EQU  100
 ;tTimerError       EQU
 ;VelocMin          EQU
 ;VelocMax          EQU
@@ -208,6 +208,12 @@ MSG_CONFIG1     FCC " MODO CONFIGURAR"
                 db EOB
 MSG_CONFIG2     FCC "         VEL_LIM"
                 db EOB
+MSG_ENSERV_WAIT FCC "   ESPERANDO... "
+                db EOB
+MSG_RADAR623    FCC "   RADAR  623   "
+                db EOB
+MSG_ENSERV_CALC FCC "  CALCULANDO... "
+                db EOB
 
 
 ;===============================================================================
@@ -256,6 +262,9 @@ Tabla_Timers_Base100mS
 Timer1_100mS    ds 1
 Timer_LED_Testigo ds 1   ;Timer para parpadeo de led testigo
 TimerBrillo       ds 1
+TimerVel          ds 1 ; Timer para el calculo de velocidad EnServicio
+TimerPant         ds 1
+TimerFinPant      ds 1
 ;Timer1_Base100  ds 1       ;Ejemplos de timers de aplicacpon con base 100 mS
 ;Timer2_Base100  ds 1
 
@@ -352,6 +361,7 @@ Fin_Base1S        dB $FF
         movw #TareaLeerDS_Est1,Est_Pres_LeerDS
         ;movw #TareaInactivo_Est1,Est_Pres_TInac
         movw #TareaConfig_Est1,Est_Pres_TConfig
+        movw #TareaServ_Est1,Est_Pres_TServ
         movw #LeerPB0_Est1,Est_Pres_LeerPB0
         movw #LeerPB1_Est1,Est_Pres_LeerPB1
         movw #TareaTCL_Est1,Est_Pres_TCL
@@ -385,6 +395,95 @@ skipLCD
                ;jsr Tarea_SendLCD
 
         Bra Despachador_Tareas
+;******************************************************************************
+;                               TAREA EnServicio
+;******************************************************************************
+Tarea_EnServicio
+                ldx Est_Pres_TServ
+                jsr 0,x
+       rts
+
+;========================== EnServicio ESTADO 1 ================================
+TareaServ_Est1  movw #MSG_RADAR623,Msg_L1
+                movw #MSG_ENSERV_WAIT,Msg_L2
+                bclr Banderas_2,LCD_OK
+                ;movw #MSG_CONFIG2,Msg_L2
+                ;movw #MSG_CONFIG1,Msg_L1
+                ;bclr Banderas_2,LCD_OK
+                
+                bset DDRP,$0F
+                bset PTP,$0F
+                
+                movw #TareaServ_Est2,Est_Pres_TServ
+                rts
+;========================== EnServicio ESTADO 2 ================================
+TareaServ_Est2
+                brclr Banderas_1,ShortP1,retEnServ_est2
+
+                movw #MSG_RADAR623,Msg_L1
+                movw #MSG_ENSERV_CALC,Msg_L2
+                bclr Banderas_2,LCD_OK
+                
+                bclr Banderas_1,ShortP1
+		bset DDRP,$0F
+                bset PTP,$0F
+                
+                movb #tTimerVel,TimerVel
+                movw #TareaServ_Est3,Est_Pres_TServ
+
+retEnServ_est2  rts
+
+;========================== EnServicio ESTADO 3 ================================
+TareaServ_Est3
+                brclr Banderas_1,ShortP0,retEnServ_est3
+                jsr Calcula
+                nop
+                nop
+                
+retEnServ_est3  rts
+
+;******************************************************************************
+;                               SUBRUTINA CALCULA
+;******************************************************************************
+Calcula
+                ldaa #100
+                ldab TimerVel
+                sba
+                staa DeltaT
+                
+
+                tab
+                clra  ; muevo DeltaT a parte baja y limpio parte alta
+                xgdx  ; muevo DeltaT a punt.X como divisor
+                ldd #1440  ; cargo dividiendo
+                idiv
+                xgdx          ; resultado desplazo a acum. D
+                stab Vel_Calc       ; guardo parte baja como Vel_Calc
+                
+                clra
+                ldab Vel_Calc
+                ldy #10
+                emul
+                ldx #36
+                idiv
+                pshx
+                ldd #400
+                idiv
+                xgdx
+                ldy #10
+                emul
+                stab TimerPant
+                
+                pulx
+                ldd #500
+                idiv
+                xgdx
+                ldy #10
+                emul
+                stab TimerFinPant
+                
+                rts
+                
 ;******************************************************************************
 ;                               TAREA MODO CONFIGURAR
 ;******************************************************************************
@@ -457,16 +556,20 @@ Dip6on          ; 0 1
                 bclr LEDS,LDInac
                 bset LEDS,LDConfig
                 bclr LEDS,LDEnServ
+                ;movw #TareaInac_Est1,Est_Pres_TInac
+                movw #TareaServ_Est1,Est_Pres_TServ
                 bra  retControlModo
 
 Dip7on          brset Valor_DS,$40,Dip7_6on
                 bra retControlModo
 
 Dip7_6on        ; 1 1
-                ; jsr Tarea_EnServicio
+                jsr Tarea_EnServicio
                 bclr LEDS,LDInac
                 bclr LEDS,LDConfig
                 bset LEDS,LDEnServ
+                movw #TareaConfig_Est1,Est_Pres_TConfig
+                ;movw #TareaInac_Est1,Est_Pres_TInac
 
 retControlModo  rts
 ;******************************************************************************
