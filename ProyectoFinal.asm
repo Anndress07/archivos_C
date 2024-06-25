@@ -54,10 +54,10 @@ LDInac           EQU $01
 ; --------------------------- TAREA EnServicio ---------------------------------
 
 LDEnServ          EQU $04
-tTimerVel         EQU  100
-;tTimerError       EQU
-;VelocMin          EQU
-;VelocMax          EQU
+tTimerVel         EQU 100
+tTimerError       EQU 3
+VelocMin          EQU 45
+VelocMax          EQU 99
 
 ; ------------------------------ TAREA Brillo ----------------------------------
 tTimerBrillo       EQU 4
@@ -185,8 +185,8 @@ LED_Testigo       ds 1
                                     org $1100
 ;-------------------------------------------------------------------------------
 ;                              TABLA DE SEGMENT
-
-Segment         dB $3F,$06,$5B,$4F,$66,$6D,$7D,$07,$7F,$6F
+                                                            ;guion
+Segment         dB $3F,$06,$5B,$4F,$66,$6D,$7D,$07,$7F,$6F,$40
 ;-------------------------------------------------------------------------------
 ;                              TABLA DE TECLAS
 
@@ -214,6 +214,17 @@ MSG_RADAR623    FCC "   RADAR  623   "
                 db EOB
 MSG_ENSERV_CALC FCC "  CALCULANDO... "
                 db EOB
+MSG_ENSERV_ERR1 FCC " ** VELOCIDAD **"
+                db EOB
+MSG_ENSERV_ERR2 FCC "*FUERA DE RANGO*"
+                db EOB
+MSG_ENSERV_ALR1 FCC "*V_LIM EXCEDIDA*"
+                db EOB
+MSG_ENSERV_INDI FCC "V_LIM   SU_VELOC"
+                db EOB
+MSG_ENSERV1     FCC "MODO EN SERVICIO"
+                db EOB
+
 
 
 ;===============================================================================
@@ -275,6 +286,7 @@ Tabla_Timers_Base1S
 
 Timer_LP0          ds 1
 Timer_LP1          ds 1
+TimerError         ds 1
 
 
 ;Timer1_Base1S:    ds 1   ;Ejemplos de timers de aplicacion con base 1 seg.
@@ -407,9 +419,10 @@ Tarea_EnServicio
 TareaServ_Est1  movw #MSG_RADAR623,Msg_L1
                 movw #MSG_ENSERV_WAIT,Msg_L2
                 bclr Banderas_2,LCD_OK
-                ;movw #MSG_CONFIG2,Msg_L2
-                ;movw #MSG_CONFIG1,Msg_L1
-                ;bclr Banderas_2,LCD_OK
+
+                movb #$00,BCD1
+                movb #$00,BCD2
+                jsr BCD_7Seg
                 
                 bset DDRP,$0F
                 bset PTP,$0F
@@ -439,9 +452,67 @@ TareaServ_Est3
                 jsr Calcula
                 nop
                 nop
+                ldaa Vel_Calc
+                cmpa #20
+                ;cmpa #VelocMin
+                bls est3_go_error
+                ;cmpa #VelocMax
+                cmpa #200
+                bhs est3_go_error
+                movw #TareaServ_Est4,Est_Pres_TServ
+                bclr Banderas_1,ShortP0
+                bra retEnServ_est3
                 
+est3_go_error
+                movw #MSG_ENSERV_ERR1,Msg_L1
+                movw #MSG_ENSERV_ERR2,Msg_L2
+                bclr Banderas_2,LCD_OK
+                movb #$AA,BCD1
+                movb #$AA,BCD2
+                jsr BCD_7Seg
+                movb #tTimerError,TimerError
+                bclr Banderas_1,ShortP0
+                movw #TareaServ_Est5,Est_Pres_TServ
 retEnServ_est3  rts
+;========================== EnServicio ESTADO 4 ================================
+TareaServ_Est4
+                tst TimerPant
+                bne retEnServ_est4
+                ldaa Vel_LIM
+                jsr Bin_BCD_MuxP
+                movb BCD,BCD1
+                ldaa Vel_Calc
+                jsr Bin_BCD_MuxP
+                movb BCD,BCD2
+                jsr BCD_7Seg
+                ldaa Vel_Calc
+                cmpa Vel_LIM
+                bhi es4_go_alarm
+                movw #MSG_ENSERV1,Msg_L1
+                movw #MSG_ENSERV_INDI,Msg_L2
+                bclr Banderas_2,LCD_OK
+                bra  EnServ4_to6
+                
+                
+                
+                
 
+es4_go_alarm
+                movw #MSG_ENSERV_ALR1,Msg_L1
+                movw #MSG_ENSERV_INDI,Msg_L2
+                bclr Banderas_2,LCD_OK
+                bset Banderas_2,Alarma
+                
+EnServ4_to6     ;movw #TareaServ_Est6,Est_Pres_TServ
+retEnServ_est4  rts
+
+;========================== EnServicio ESTADO 5 ================================
+TareaServ_Est5
+                tst TimerError
+                bne retEnServ_est5
+                
+                movw #TareaServ_Est1,Est_Pres_TServ
+retEnServ_est5  rts
 ;******************************************************************************
 ;                               SUBRUTINA CALCULA
 ;******************************************************************************
@@ -1328,8 +1399,8 @@ process
 ; ==============================================================================
 ; ============================== Subrutina BCD-7Seg ============================
 ; ==============================================================================
-BCD_7Seg
-                ;Segment         dB $3F,$06,$5B,$4F,$66,$6D,$7D,$07,$7F,$6F
+BCD_7Seg                                                                    ;-
+                ;Segment         dB $3F,$06,$5B,$4F,$66,$6D,$7D,$07,$7F,$6F,$40
                 ; aa = 99
                 ldx #Segment
                 ldaa BCD1
