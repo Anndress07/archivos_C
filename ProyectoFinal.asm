@@ -43,17 +43,17 @@ MaskPB0            EQU $01
 
 ; ---------------------------- TAREA CONFIGURAR --------------------------------
 
-;LDConfig         EQU
-;LimMax           EQU
-;LimMin           EQU
+LDConfig         EQU $02
+LimMax           EQU 90
+LimMin           EQU 65
 
 ; ---------------------------- TAREA INACTIVO ----------------------------------
-;LDInac           EQU
+LDInac           EQU $01
 ;tTimerVLim       EQU
 
 ; --------------------------- TAREA EnServicio ---------------------------------
 
-;LDEnServ          EQU
+LDEnServ          EQU $04
 ;tTimerVel         EQU
 ;tTimerError       EQU
 ;VelocMin          EQU
@@ -419,9 +419,9 @@ return_config_est1
 TareaConfig_Est2
                 brclr Banderas_1,Array_OK,retConfig_est2
                 jsr BCD_BIN
-                cmpa #65
+                cmpa #LimMin    ; 65 kmh
                 blo est2_conf_borrartcl
-                cmpa #90
+                cmpa #LimMax    ; 90 kmh
                 bhi est2_conf_borrartcl
                 staa ValorLIM
                 jsr Bin_BCD_MuxP
@@ -448,15 +448,15 @@ ControlModo
                 brset Valor_DS,$80,Dip7on
                 brset Valor_DS,$40,Dip6on
                 ; jsr Tarea_ModoInactivo
-                bset LEDS,$01
-                bclr LEDS,$02
-                bclr LEDS,$04
+                bset LEDS,LDInac
+                bclr LEDS,LDConfig
+                bclr LEDS,LDEnServ
                 bra retControlModo
 Dip6on          ; 0 1
                 jsr Tarea_Configurar
-                bclr LEDS,$01
-                bset LEDS,$02
-                bclr LEDS,$04
+                bclr LEDS,LDInac
+                bset LEDS,LDConfig
+                bclr LEDS,LDEnServ
                 bra  retControlModo
 
 Dip7on          brset Valor_DS,$40,Dip7_6on
@@ -464,9 +464,9 @@ Dip7on          brset Valor_DS,$40,Dip7_6on
 
 Dip7_6on        ; 1 1
                 ; jsr Tarea_EnServicio
-                bclr LEDS,$01
-                bclr LEDS,$02
-                bset LEDS,$04
+                bclr LEDS,LDInac
+                bclr LEDS,LDConfig
+                bset LEDS,LDEnServ
 
 retControlModo  rts
 ;******************************************************************************
