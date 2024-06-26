@@ -1,4 +1,4 @@
-                                            ;******************************************************************************
+;******************************************************************************
  ;***  Marvin Castro Castro - Microprocesadores - EIE UCR
  ;***           PROYECTO FINAL: RADAR 623
  ;******************************************************************************
@@ -49,7 +49,7 @@ LimMin           EQU 65
 
 ; ---------------------------- TAREA INACTIVO ----------------------------------
 LDInac           EQU $01
-;tTimerVLim       EQU
+tTimerVLim       EQU 30
 
 ; --------------------------- TAREA EnServicio ---------------------------------
 
@@ -67,7 +67,7 @@ MaskSCF            EQU $80
 tTimerRebDS       EQU 10
 
 ; --------------------------- TAREA DesplazarLeds ------------------------------
-;tTimerDplzLeds
+tTimerDplzLeds    EQU 1
 
 ; ------------------------------- Banderas -------------------------------------
 ; ----- Banderas_1
@@ -224,6 +224,8 @@ MSG_ENSERV_INDI FCC "V_LIM   SU_VELOC"
                 db EOB
 MSG_ENSERV1     FCC "MODO EN SERVICIO"
                 db EOB
+MSG_INACTIV     FCC "  MODO INACTIVO "
+                db EOB
 
 
 
@@ -276,6 +278,7 @@ TimerBrillo       ds 1
 TimerVel          ds 1 ; Timer para el calculo de velocidad EnServicio
 TimerPant         ds 1
 TimerFinPant      ds 1
+TimerDplzLeds     ds 1
 ;Timer1_Base100  ds 1       ;Ejemplos de timers de aplicacpon con base 100 mS
 ;Timer2_Base100  ds 1
 
@@ -287,6 +290,7 @@ Tabla_Timers_Base1S
 Timer_LP0          ds 1
 Timer_LP1          ds 1
 TimerError         ds 1
+TimerInac          ds 1
 
 
 ;Timer1_Base1S:    ds 1   ;Ejemplos de timers de aplicacion con base 1 seg.
@@ -373,6 +377,7 @@ Fin_Base1S        dB $FF
         movw #TareaLeerDS_Est1,Est_Pres_LeerDS
         ;movw #TareaInactivo_Est1,Est_Pres_TInac
         movw #TareaConfig_Est1,Est_Pres_TConfig
+        movw #DsplzLeds_Est1,Est_Pres_DsplzLeds
         movw #TareaServ_Est1,Est_Pres_TServ
         movw #LeerPB0_Est1,Est_Pres_LeerPB0
         movw #LeerPB1_Est1,Est_Pres_LeerPB1
@@ -403,10 +408,115 @@ skipLCD
         ;jsr Tarea_Conversion
         jsr Tarea_Mux_Pantalla
         jsr Tarea_Brillo
+        jsr Tarea_DsplzLeds
         ;movb #$33,CharLCD
                ;jsr Tarea_SendLCD
 
         Bra Despachador_Tareas
+        
+        
+        ;Est_Pres_DsplzLeds
+;******************************************************************************
+;                               TAREA ModoInactivo
+;******************************************************************************
+Tarea_ModoInactivo
+                ldx Est_Pres_TInac
+                jsr 0,x
+
+                       rts
+
+;============================ ModoInactivo ESTADO 1 ===============================
+TInac_Est1
+                movw #MSG_RADAR623,Msg_L1
+                movw #MSG_INACTIV,Msg_L2
+                bclr Banderas_2,LCD_OK
+                
+                bset DDRP,$0F
+                bset PTP,$0F
+                movw #TInac_Est2,Est_Pres_TInac
+                rts
+;============================ ModoInactivo ESTADO 2 ===============================
+TInac_Est2
+                brset Banderas_1,LongP0,mostrarInactivo
+                brset Banderas_1,LongP1,mostrarInactivo
+                bset DDRP,$0F
+                bset PTP,$0F
+                bra ret_TInac_est2
+mostrarInactivo
+                movb #tTimerVLim,TimerDplzLeds
+                ldaa Vel_LIM
+                jsr Bin_BCD_MuxP
+                movb BCD,BCD2
+                jsr BCD_7Seg
+                movw #TInac_Est3,Est_Pres_TInac
+                ;bra just_ret_tinac2
+
+ret_TInac_est2
+
+just_ret_tinac2 rts
+;============================ ModoInactivo ESTADO 3 ===============================
+TInac_Est3
+                tst TimerDplzLeds
+                bne ret_TInac_est3
+                
+                movw #TInac_Est1,Est_Pres_TInac
+                bclr Banderas_1,LongP0
+                bclr Banderas_1,LongP1
+ret_TInac_est3  bset DDRP,$03
+                bset PTP,$03
+                rts
+;******************************************************************************
+;                               TAREA DsplzLeds
+;******************************************************************************
+Tarea_DsplzLeds
+                ldx Est_Pres_DsplzLeds
+                jsr 0,x
+       rts
+
+;============================ DsplzLeds ESTADO 1 ===============================
+DsplzLeds_Est1
+                brclr Banderas_2,Alarma,retDsplzLeds_est1
+                movw #DsplzLeds_Est2,Est_Pres_DsplzLeds
+                movb #tTimerDplzLeds,TimerDplzLeds
+                movb #$80,DplzLeds
+                
+
+retDsplzLeds_est1
+                rts
+;========================== DsplzLeds ESTADO 1 ================================
+DsplzLeds_Est2
+                tst TimerDplzLeds
+                bne retDsplzLeds_est2
+                brset Banderas_2,DsplzIzquierda,IzqADerecha
+                ; desplazamiento derecha a izquierda
+                ldaa DplzLeds
+                cmpa #$80
+                beq cambiarAIzq
+                lsl DplzLeds
+                bra dplz2_join
+cambiarAIzq
+                bset Banderas_2,DsplzIzquierda
+                bra dplz2_join
+IzqADerecha
+                ldaa DplzLeds
+                cmpa #$08
+                beq cambiarADer
+                lsr DplzLeds
+                bra dplz2_join
+cambiarADer
+                bclr Banderas_2,DsplzIzquierda
+
+dplz2_join      movb DplzLeds,LEDS
+
+                brset Banderas_2,Alarma,reloadLedTimer
+                movw #DsplzLeds_Est1,Est_Pres_DsplzLeds
+                bclr LEDS,$80
+                bra retDsplzLeds_est2
+                
+reloadLedTimer
+                movb #tTimerDplzLeds,TimerDplzLeds
+retDsplzLeds_est2
+                rts
 ;******************************************************************************
 ;                               TAREA EnServicio
 ;******************************************************************************
@@ -438,7 +548,7 @@ TareaServ_Est2
                 bclr Banderas_2,LCD_OK
                 
                 bclr Banderas_1,ShortP1
-		bset DDRP,$0F
+                bset DDRP,$0F
                 bset PTP,$0F
                 
                 movb #tTimerVel,TimerVel
@@ -503,7 +613,7 @@ es4_go_alarm
                 bclr Banderas_2,LCD_OK
                 bset Banderas_2,Alarma
                 
-EnServ4_to6     ;movw #TareaServ_Est6,Est_Pres_TServ
+EnServ4_to6     movw #TareaServ_Est6,Est_Pres_TServ
 retEnServ_est4  rts
 
 ;========================== EnServicio ESTADO 5 ================================
@@ -513,6 +623,15 @@ TareaServ_Est5
                 
                 movw #TareaServ_Est1,Est_Pres_TServ
 retEnServ_est5  rts
+
+;========================== EnServicio ESTADO 6 ================================
+TareaServ_Est6
+                tst TimerFinPant
+                bne retEnServ_est6
+                bclr Banderas_2,Alarma
+                
+                movw #TareaServ_Est1,Est_Pres_TServ
+retEnServ_est6  rts
 ;******************************************************************************
 ;                               SUBRUTINA CALCULA
 ;******************************************************************************
@@ -538,7 +657,7 @@ Calcula
                 ldx #36
                 idiv
                 pshx
-                ldd #400
+                ldd #200
                 idiv
                 xgdx
                 ldy #10
@@ -546,7 +665,7 @@ Calcula
                 stab TimerPant
                 
                 pulx
-                ldd #500
+                ldd #300
                 idiv
                 xgdx
                 ldy #10
@@ -617,17 +736,19 @@ retConfig_est2  rts
 ControlModo
                 brset Valor_DS,$80,Dip7on
                 brset Valor_DS,$40,Dip6on
-                ; jsr Tarea_ModoInactivo
+                jsr Tarea_ModoInactivo
                 bset LEDS,LDInac
                 bclr LEDS,LDConfig
                 bclr LEDS,LDEnServ
+                movw #TareaServ_Est1,Est_Pres_TServ
+                movw #TareaConfig_Est1,Est_Pres_TConfig
                 bra retControlModo
 Dip6on          ; 0 1
                 jsr Tarea_Configurar
                 bclr LEDS,LDInac
                 bset LEDS,LDConfig
                 bclr LEDS,LDEnServ
-                ;movw #TareaInac_Est1,Est_Pres_TInac
+                movw #TInac_Est1,Est_Pres_TInac
                 movw #TareaServ_Est1,Est_Pres_TServ
                 bra  retControlModo
 
@@ -640,7 +761,7 @@ Dip7_6on        ; 1 1
                 bclr LEDS,LDConfig
                 bset LEDS,LDEnServ
                 movw #TareaConfig_Est1,Est_Pres_TConfig
-                ;movw #TareaInac_Est1,Est_Pres_TInac
+                movw #TInac_Est1,Est_Pres_TInac
 
 retControlModo  rts
 ;******************************************************************************
