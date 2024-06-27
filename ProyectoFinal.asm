@@ -1,191 +1,207 @@
 ;******************************************************************************
- ;***  Marvin Castro Castro - Microprocesadores - EIE UCR
- ;***           PROYECTO FINAL: RADAR 623
+ ;***           Marvin Castro Castro - C01884 Microprocesadores - EIE UCR
+ ;***                   PROYECTO FINAL: RADAR 623
+ ;*** ==========================================================================
+ ;    Descripción: RADAR 623 Es un radar de control de velocidad de vehículos.
+ ;    Por medio de dos botones (PH3 Y PH0) se simulan dos sensores ultrasónicos
+ ;    y sacando la diferencia de tiempos entre estos se puede calcular la 
+ ;    velocidad del vehículo. Si el vehiculo supera la velocidad límite se 
+ ;    activa una alarma. Si la velocidad es menor o mayor a lo soportado por el
+ ;    sensor, se comunicará por medio de la pantalla. Si la velocidad se 
+ ;    encuentra en el rango aceptado, se mostrará la velocidad del vehículo y 
+ ;    la velocidad límite por la cantidad de tiempo que le toma al vehículo
+ ;    llegar a la pantalla. 
+ ;  
+ ;    Por medio de los DIP SWITCHES (PH7 y PH6) se escoje el modo de operación 
+ ;    de la aplicación, siendo los modos: inactivo, configuración, y en servicio. 
+
  ;******************************************************************************
 #include registers.inc
  ;******************************************************************************
- ;                 RELOCALIZACION DE VECTOR DE INTERRUPCION
+ ;                 RELOCALIZACIÓN DE VECTOR DE INTERRUPCIÓN
  ;******************************************************************************
                                 Org $3E64       ; vector Output Compare
                                 dw Maquina_Tiempos
 
 ;******************************************************************************
-;                   DECLARACION DE LOS VALORES DEL PROGRAMA
+;                   DECLARACIÓN DE LOS VALORES DEL PROGRAMA
 ;******************************************************************************
 
 ; ------------------------------ TAREA TECLADO ---------------------------------
-tSuprRebTCL                EQU 20
+tSuprRebTCL             EQU 20  ; Supr. rebotes teclado matricial  (20 ms)       
 
 ; ---------------------------- TAREA PANTALLA_MUX ------------------------------
-tTimerDigito            EQU 2
-MaxCountTicks           EQU 100
+tTimerDigito            EQU 2   ; Tiempo de digito de 2 ms, pantalla 7 segmentos 
+MaxCountTicks           EQU 100 ; Contador para la tarea de Brillo en la pantalla
+                                ; de 7 segmentos. 
 
 
 ; -------------------------------- TAREA LCD  ----------------------------------
-tTimer260uS:            EQU 13
-tTimer40uS:             EQU 2
-tTimer2mS:              EQU 2
-EOB                     EQU $FF
-Clear_LCD               EQU $01
-ADD_L1                  EQU $80
-ADD_L2                  EQU $C0
+
+; --------- Retardos para la sincronización estroboscópica de la pantalla LCD
+tTimer260uS:            EQU 13      ; 260/20 = 13    
+tTimer40uS:             EQU 2       ; 40/20 = 2    
+tTimer2mS:              EQU 2       ; Se usa el timer de 1ms
+EOB                     EQU $FF     ; End Of Block
+Clear_LCD               EQU $01     ; Comando de Clear (LCD)
+ADD_L1                  EQU $80     ; Dirección de la primera línea    
+ADD_L2                  EQU $C0     ; Dirección de la segunda línea  
 
 ; ------------------------- TAREAS LEER_PB1, LEER_PB0 --------------------------
-PortPB                     EQU PTIH
-tSupRebPB0                 EQU 10
-tSupRebPB1                 EQU 10
-tShortP0                   EQU 25
-tShortP1                   EQU 25
-tLongP0                    EQU 3
-tLongP1                    EQU 3
-MaskPB1                    EQU $04
-MaskPB0                    EQU $01
+
+PortPB                     EQU PTIH ; Puerto de los pushbuttons
+tSupRebPB0                 EQU 10   ; Supr. rebotes para el botón PH0 (10 ms)
+tSupRebPB1                 EQU 10   ; Supr. rebotes para el botón PH3 (10 ms)
+tShortP0                   EQU 25   ; Tiempo de short press, PH0 (25 ms)
+tShortP1                   EQU 25   ; Tiempo de short press, PH1 (25 ms)
+tLongP0                    EQU 3    ; Tiempo de long press, PH0 (3 s)
+tLongP1                    EQU 3    ; Tiempo de long press, PH1 (3 ms)
+MaskPB1                    EQU $04  ; TODO: Máscara para el botón PH2
+MaskPB0                    EQU $01  ; Máscara para el botón PH0
 
 ; ---------------------------- TAREA CONFIGURAR --------------------------------
 
-LDConfig                 EQU $02
-LimMax                   EQU 90
-LimMin                   EQU 65
+LDConfig                 EQU $02    ; Led posición dos
+LimMax                   EQU 90     ; Límite de velocidad máximo
+LimMin                   EQU 65     ; Límite de velocidad mínimo
 
 ; ---------------------------- TAREA INACTIVO ----------------------------------
-LDInac                   EQU $01
-tTimerVLim               EQU 30
+LDInac                   EQU $01    ; Led posición uno
+tTimerVLim               EQU 30     ; Tiempo para el TimerVLim (30 * 100 ms)
 
 ; --------------------------- TAREA EnServicio ---------------------------------
 
-LDEnServ                  EQU $04
-tTimerVel                 EQU 100
-tTimerError               EQU 3
-VelocMin                  EQU 45
-VelocMax                  EQU 99
+LDEnServ                  EQU $04   ; Led posición tres
+tTimerVel                 EQU 100   ; Timer para el cálculo de velocidad (10 * 100 ms)
+tTimerError               EQU 3     ; Timer de error (3 s)
+VelocMin                  EQU 45    ; Velocidad mínima aceptable por el sensor
+VelocMax                  EQU 99    ; Velocidad máxima aceptable por el sensor
 
 ; ------------------------------ TAREA Brillo ----------------------------------
-tTimerBrillo               EQU 4
-MaskSCF                    EQU $80
+tTimerBrillo               EQU 4    ; Timer para el convertidor ATD (400 ms)
+MaskSCF                    EQU $80  ; Máscara para el bit SCF del registro 
+                                    ; ATD0STAT0
 
 ; ------------------------------ TAREA LeerDS ----------------------------------
-tTimerRebDS               EQU 10
+tTimerRebDS               EQU 10    ; Supr. Rebotes DIP SWITCHES (10 ms)
 
 ; --------------------------- TAREA DesplazarLeds ------------------------------
-tTimerDplzLeds            EQU 1
+tTimerDplzLeds            EQU 1     ; Cadencia de desplazamiento de LEDS 
+                                    ; (100 ms)
 
 ; ------------------------------- Banderas -------------------------------------
-; ----- Banderas_1
-ShortP0                   EQU $01
-LongP0                    EQU $02
-ShortP1                   EQU $04
-LongP1                    EQU $08
-Array_OK                  EQU $10
-; ----- Banderas_2
-RS                        EQU $01
-LCD_OK                    EQU $02
-FinSendLCD                EQU $04
-SecondLine                EQU $08
-Alarma                    EQU $10
-DsplzIzquierda            EQU $20
+; ----------  Banderas_1
+ShortP0                   EQU $01   ; flag de Short press para el PH0
+LongP0                    EQU $02   ; flag de Long press para el PH0
+ShortP1                   EQU $04   ; flag de Short press para el PH1
+LongP1                    EQU $08   ; flag de Long press para el PH1
+Array_OK                  EQU $10   ; flag de finalización de escritura con el 
+                                    ; teclado matricial
+; ---------- Banderas_2
+RS                        EQU $01   ; flag de LCD: indica si se transmite un dato o no
+LCD_OK                    EQU $02   ; flag de finalización de mensajes del LCD
+FinSendLCD                EQU $04   ; flag que indica envío de un byte en LCD
+SecondLine                EQU $08   ; flag que indica que se va a transmitir la segunda línea
+Alarma                    EQU $10   ; flag que indica la alarma activa
+DsplzIzquierda            EQU $20   ; flag que indica que los leds van de izq a derecha
+
 ; -------------------------------- GENERALES -----------------------------------
-tTimerLDTst               EQU 5     ;Tiempo de parpadeo de LED testigo en segundos
-
-
-;--- Aqui se colocan los valores de carga para los timers baseT  ----
+tTimerLDTst               EQU 5     ; Tiempo de parpadeo de LED testigo (500 ms)
 
 tTimer1mS:                EQU 50     ;Base de tiempo de 1 mS (1 ms x 1 / 20us)
 tTimer10mS:               EQU 500    ;Base de tiempo de 10 mS (1 mS x 10 / 20us)
-tTimer100mS:              EQU 5000    ;Base de tiempo de 100 mS (10 mS x 100 / 20us)
-tTimer1S:                 EQU 50000    ;Base de tiempo de 1 segundo (100 mS x 10 / 20us)
+tTimer100mS:              EQU 5000   ;Base de tiempo de 100 mS (10 mS x 100 / 20us)
+tTimer1S:                 EQU 50000  ;Base de tiempo de 1 segundo (100 mS x 10 / 20us)
 
 ;******************************************************************************
-;                   DECLARACION DE LAS ESTRUCTURAS DE DATOS
+;                   DECLARACIÓN DE LAS ESTRUCTURAS DE DATOS
 ;******************************************************************************
-
-
-
-; ==============================================================================
-;                            ESTRUCTURAS DE DATOS
                                 Org $1000
 
-
 ; ----------------------------- TAREA_TECLADO ----------------------------------
-MAX_TCL                 db 5            ;1000
-Tecla                   db $FF          ;1001
-Tecla_IN                db $FF          ;1002
-Cont_TCL                db $00          ;1003
-Patron                  db $00          ;1004
-Est_Pres_TCL            ds 2            ;1006
+;                          Dirección (hex) || Descripción
+MAX_TCL                 db 5         ;1000    Cantidad máxima de carácteres en el teclado
+Tecla                   db $FF       ;1001    Tecla inicial
+Tecla_IN                db $FF       ;1002    Tecla posterior - supresión de rebotes
+Cont_TCL                db $00       ;1003    Cantidad de teclas ingresadas
+Patron                  db $00       ;1004    Patrón a desplazar para la lectura del teclado
+Est_Pres_TCL            ds 2         ;1006    Estado presente, máquina estados TCL
                                 org $1010
-Num_Array               db $FF,$FF,$FF,$FF,$FF         ;1010
+Num_Array               db $FF,$FF,$FF,$FF,$FF ;1010 Array contenedor de 
+                                               ; carácteres del teclado matricial
 
 ; ---------------------------- TAREA PANTALLA_MUX ------------------------------
                                 org $1020
-EstPres_PantallaMUX     ds 2       ;1021
-Dsp1                    ds 1       ;1022
-Dsp2                    ds 1       ;1023
-Dsp3                    ds 1       ;1024
-Dsp4                    ds 1       ;1025
-LEDS                    ds 1       ;1026
-Cont_Dig                ds 1       ;1027
-Brillo                  db 100     ;1028
-;BIN1                    ds 1       ;
-;BIN2                    ds 1
+EstPres_PantallaMUX     ds 2       ;1021  Estado presente, máquina estados pmux  
+Dsp1                    ds 1       ;1022  Variable a multiplexar en el primer display 
+Dsp2                    ds 1       ;1023  Variable a multiplexar en el segundo display 
+Dsp3                    ds 1       ;1024  Variable a multiplexar en el tercer display 
+Dsp4                    ds 1       ;1025  Variable a multiplexar en el cuarto display 
+LEDS                    ds 1       ;1026  Variable a colocar en los LEDS 
+Cont_Dig                ds 1       ;1027  Contador de digito a multiplexar en 7 Seg  
+Brillo                  db 100     ;1028  Variable de brillo en los 7 segmentos 
+                                   ;      (100 brillo máximo, 0 brillo mínimo)
+
 
 ; --------------------------- Subrutina CONVERSION  ----------------------------
-BCD                     ds 1  ;1029
-Cont_BCD                ds 1  ;102A
-BCD1                    ds 1  ;102B
-BCD2                    ds 1  ;102C
+BCD                     ds 1  ;1029   Variable resultado de Bin_BCD_MuxP
+Cont_BCD                ds 1  ;102A   Variable de contador Bin_BCD_MuxP
+BCD1                    ds 1  ;102B   Variable en BCD a poner en Dsp1 y Dsp2 
+BCD2                    ds 1  ;102C   Variable en BCD a poner en Dsp3 y Dsp4
 
 ; -------------------------------- TAREA LCD  ----------------------------------
-IniDsp                  dB $28,$28,$06,$0C,$FF ;1031
-Punt_LCD                ds 2  ;1033
-CharLCD                 ds 1  ;1034
-Msg_L1                  ds 2  ;1036
-Msg_L2                  ds 2  ;1038
-EstPres_SendLCD         ds 2  ;103A
-EstPres_TareaLCD        ds 2  ;$103C
+IniDsp                  dB $28,$28,$06,$0C,$FF ;1031 Tabla con los comandos para
+                        ; inicializar el LCD
+Punt_LCD                ds 2  ;1033   Puntero que recorre los elementos a enviar
+CharLCD                 ds 1  ;1034   Contiene el byte a enviar
+Msg_L1                  ds 2  ;1036   Puntero con direc. del mensaje a poner en linea1
+Msg_L2                  ds 2  ;1038   Puntero con direc. del mensaje a poner en linea2
+EstPres_SendLCD         ds 2  ;103A   Estado presente, máquina estados SendLCD  
+EstPres_TareaLCD        ds 2  ;$103C  Estado presente, máquina estados LCD
 
 ; ------------------------- TAREAS LEER_PB1, LEER_PB0 --------------------------
-Est_Pres_LeerPB0           ds 2       ;103E
-Est_Pres_LeerPB1           ds 2       ;1040
+Est_Pres_LeerPB0           ds 2       ;103E Estado presente, máquina estados PB0
+Est_Pres_LeerPB1           ds 2       ;1040 Estado presente, máquina estados PB1
 
 ; ---------------------------- TAREA CONFIGURAR --------------------------------
-Est_Pres_TConfig          ds 2        ;1042
-ValorLIM                  ds 1        ;1043
-Vel_LIM                   dB 65       ;1044
+Est_Pres_TConfig          ds 2        ;1042 Estado presente, máquina estados ModoConfig
+ValorLIM                  ds 1        ;1043 Variable temporal
+Vel_LIM                   dB 65       ;1044 Variable de velocidad límite 
 
 ; ---------------------------- TAREA INACTIVO ---------------------------------
-Est_Pres_TInac            ds 2        ;1046
+Est_Pres_TInac            ds 2        ;1046 Estado presente, máquina estados ModoInact
 
 ; ----------------------------- TAREA EnServicio -------------------------------
-Est_Pres_TServ            ds 2        ;1048
-Vel_Calc                  ds 1        ;1049
-DeltaT                    ds 1        ;104A
+Est_Pres_TServ            ds 2        ;1048 Estado presente, máquina estados EnServ
+Vel_Calc                  ds 1        ;1049 Velocidad Calculada 
+DeltaT                    ds 1        ;104A Diferencia de tiempo entre sensor1 y 2
 
 ; ------------------------------ TAREA Brillo ----------------------------------
-Est_Pres_TBrillo           ds 2       ;104C
+Est_Pres_TBrillo           ds 2       ;104C Estado presente, máquina estados Brillo
 
 ; ------------------------------ TAREA LeerDS ----------------------------------
-Est_Pres_LeerDS            ds 2       ;104E
-Temp_DS                    ds 1       ;104F
-Valor_DS                   ds 1       ;1050
+Est_Pres_LeerDS            ds 2       ;104E Estado presente, máquina estados LeerDS
+Temp_DS                    ds 1       ;104F Variable temporal DIPSWITCHES
+Valor_DS                   ds 1       ;1050 Variable DIPSWITCHES con rebotes suprimidos
 
 ; --------------------------- TAREA DesplazarLeds ------------------------------
-Est_Pres_DsplzLeds         ds 2       ;1052
-DplzLeds                   ds 1       ;1053
+Est_Pres_DsplzLeds         ds 2       ;1052 Estado presente, máquina estados DsplzLeds
+DplzLeds                   ds 1       ;1053 Valor de máscara a ser aplicada en LEDS
 
 ; -------------------------------- BANDERAS ------------------------------------
                                 org $1070
-Banderas_1                ds 1
+Banderas_1                ds 1  
 Banderas_2                ds 1
-Banderas                  ds 1
 
 ; -------------------------------- GENERALES -----------------------------------
-LED_Testigo               ds 1
+                                org $1080
+LED_Testigo               ds 1          ; Variable con el valor a poner en PTP7-4
 
 ; --------------------------------- TABLAS -------------------------------------
                                     org $1100
 ;-------------------------------------------------------------------------------
 ;                              TABLA DE SEGMENT
-                                                            ;guion
+                ;    0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  -
 Segment         dB $3F,$06,$5B,$4F,$66,$6D,$7D,$07,$7F,$6F,$40
 ;-------------------------------------------------------------------------------
 ;                              TABLA DE TECLAS
@@ -235,147 +251,71 @@ MSG_INACTIV     FCC "  MODO INACTIVO "
                                 Org $1500
 Tabla_Timers_BaseT:
 
-Timer1mS                ds 2       ;1040-1041
-Timer10mS:              ds 2       ;1042-1043
-Timer100mS:             ds 2       ;1044-1045
-Timer1S:                ds 2       ;1045-1046
-Timer260uS:             ds 2
-Timer40uS:              ds 2
+Timer1mS                ds 2       ;1501 Timers por defecto de la máquina de tiempos
+Timer10mS:              ds 2       ;1503
+Timer100mS:             ds 2       ;1505
+Timer1S:                ds 2       ;1507
+Timer260uS:             ds 2       ;1509 Timer 260uS para LCD
+Timer40uS:              ds 2       ;150B Timer 40uS para LCD
 
-Counter_Ticks           ds 2       ;1047-1048
-
-Fin_BaseT               dW $FFFF   ;1049-104A
+Counter_Ticks           ds 2       ;150D Contador para el brillo de 7 Segmentos
+Fin_BaseT               dW $FFFF   ;150F
 
 Tabla_Timers_Base1mS
 
-Timer_Digito            ds 1      ;104B
-Timer_RebPB0            ds 1      ;104C
-Timer_RebPB1            ds 1      ;104C
-Timer_RebTCL            ds 1      ;104D
-Timer2mS                ds 1
-TimerRebDS              ds 1
+Timer_Digito            ds 1       ;1510 Timer para cada digito de 7 Segmentos
+Timer_RebPB0            ds 1       ;1511 Supresión de rebotes PB0
+Timer_RebPB1            ds 1       ;1512 Supresión de rebotes PB1
+Timer_RebTCL            ds 1       ;1513 Supresión de rebotes TCL
+Timer2mS                ds 1       ;1514 Timer 2 ms para LCD
+TimerRebDS              ds 1       ;1515 Supresión de rebotes DS
 
-
-;Timer1_Base1:   ds 1       ;Ejemplos de timers de aplicacion con BaseT
-;Timer2_Base1:   ds 1
-
-Fin_Base1mS:            dB $FF
+Fin_Base1mS:            dB $FF     ;1516
 
 Tabla_Timers_Base10mS
 
-Timer_SHP0              ds 1
-Timer_SHP1              ds 1
-;Timer1_Base10: ds 1       ;Ejemplos de timers de aplicacion con base 10 mS
-;Timer2_Base10: ds 1
+Timer_SHP0              ds 1       ;1517 Short press PB0
+Timer_SHP1              ds 1       ;1518 Short press PB1
 
-Fin_Base10ms            dB $FF
+Fin_Base10ms            dB $FF     ; 1519
 
 Tabla_Timers_Base100mS
 
-Timer1_100mS            ds 1
-Timer_LED_Testigo         ds 1   ;Timer para parpadeo de led testigo
-TimerBrillo               ds 1
-TimerVel                  ds 1 ; Timer para el calculo de velocidad EnServicio
-TimerPant                 ds 1
-TimerFinPant              ds 1
-TimerDplzLeds             ds 1
-;Timer1_Base100          ds 1       ;Ejemplos de timers de aplicacpon con base 100 mS
-;Timer2_Base100          ds 1
+Timer1_100mS              ds 1     ;151A    
+Timer_LED_Testigo         ds 1     ;151B Timer para parpadeo de led testigo
+TimerBrillo               ds 1     ;151C Timer para tarea de brillo
+TimerVel                  ds 1     ;151D Timer para el calculo de velocidad EnServicio
+TimerPant                 ds 1     ;151E Timer para que el vehiculo recorra 200m
+TimerFinPant              ds 1     ;151F Timer para que el vehiculo recorra 300m
+TimerDplzLeds             ds 1     ;1520 Timer para cadencia de leds
 
-Fin_Base100mS           dB $FF
+Fin_Base100mS           dB $FF     ;1521
 
 Tabla_Timers_Base1S
 
-
-Timer_LP0                  ds 1
-Timer_LP1                  ds 1
-TimerError                 ds 1
-TimerInac                  ds 1
-
-
-;Timer1_Base1S:            ds 1   ;Ejemplos de timers de aplicacion con base 1 seg.
-;Timer2_Base1S:            ds 1
+Timer_LP0                  ds 1    ;1522 Long Press PB0
+Timer_LP1                  ds 1    ;1523 Long Press PB1
+TimerError                 ds 1    ; Timer de error
+TimerInac                  ds 1    ; Timer para display en estado inactivo
 
 Fin_Base1S                dB $FF
 
-;Tabla_Timers_Base260uS
-
-;Timer1_260uS    ds 1
-;Timer1_Base100  ds 1
-;Timer2_Base100  ds 1
-
-;Fin_Base260uS   dB $FF
-
-;Tabla_Timers_Base40uS
-
-;Timer1_40uS    ds 1
-;Timer1_Base100  ds 1
-;Timer2_Base100  ds 1
-
-;Fin_Base40uS   dB $FF
-
 ;===============================================================================
-;                              CONFIGURACION DE HARDWARE
+;                           CONFIGURACIÓN DE PERIFERICOS
 ;===============================================================================
                               Org $2000
-; ------------------------ Bloque de configuración de LEDS ---------------------
-        Bset DDRB,$FF
-        Bset DDRJ,$02
-        BClr PTJ,$02
 
-; --------------Bloque de configuración de Disp. 7 Segmentos y Led RGB----------
-        Movb #$7F,DDRP    ;Habilito (pongo como salidas) PP6-PP4 (RGB LED)
-                          ; y PP3-PP0 (digitos de 7 segmentos)
-        movb #$0F,PTP
-
-; ---------------- Bloque de configuración de puerto de botones ----------------
-        movb #$00,DDRH
-
-; ---------------- Bloque de configuración de convertidor ATD ------------------
-        movb #$20,ATD0CTL3
-        movb #$C8,ATD0CTL4
-        movb #$07,ATD0CTL5
-; ---------------- Bloque de configuración Output Compare Canal 5 ------------
-        Movb #$90,TSCR1
-        Movb #$00,TSCR2
-        Movb #$20,TIOS
-        Movb #$20,TIE
-        ;bset PTP,$40
-
-        ldd TCNT
-        addd #480
-        std TC5
-; ---------------- Bloque de configuración Teclado Matricial -------------------
-        movb #$F0,DDRA     ; pongo como salidas los 4 msb
-        movb #$01,PUCR     ; activo pull ups para puerto A
-        clr Cont_TCL
-;===============================================================================
-;                           PROGRAMA PRINCIPAL
-;===============================================================================
 ; ------------------------- Inicialización de timers ---------------------------
-        Movw #tTimer1mS,Timer1mS
-        Movw #tTimer10mS,Timer10mS         ;Inicia los timers de bases de tiempo
-        Movw #tTimer100mS,Timer100mS
-        Movw #tTimer1S,Timer1S
-
+        movw #tTimer1mS,Timer1mS
+        movw #tTimer10mS,Timer10mS         
+        movw #tTimer100mS,Timer100mS
+        movw #tTimer1S,Timer1S
         movb #tTimerDigito,Timer_Digito
-        Movb #tTimerLDTst,Timer_LED_Testigo  ;inicia timer parpadeo led testigo
+        movb #tTimerLDTst,Timer_LED_Testigo  
         movb #1,Cont_Dig
 
-
-
-        Lds #$3BFF
-        Cli
-        Clr Banderas_1
-        Clr Banderas_2
-        Clr LEDS
-        Clr Msg_L1
-        CLR Msg_L2
-        clr Punt_LCD
-        clr CharLCD
-; ------------------- Inicialización de punteros de próximo estado -------------
+; -------------------- Inicialización de Máquinas de estado ---------------------
         movw #TareaLeerDS_Est1,Est_Pres_LeerDS
-        ;movw #TareaInactivo_Est1,Est_Pres_TInac
         movw #TareaConfig_Est1,Est_Pres_TConfig
         movw #DsplzLeds_Est1,Est_Pres_DsplzLeds
         movw #TareaServ_Est1,Est_Pres_TServ
@@ -387,93 +327,144 @@ Fin_Base1S                dB $FF
         movw #TareaLCD_Est1,EstPres_TareaLCD
         movw #TareaBrillo_Est1,Est_Pres_TBrillo
 
-        jsr Rutina_InitLCD
+; ------------------------ Bloque de configuración de LEDS ---------------------
+        Bset DDRB,$FF       ; Habilitar todos los LEDS
+        Bset DDRJ,$02       ; Poner en bajo PTJ.1 para funcionamiento de LEDS
+        BClr PTJ,$02
+
+; --------------Bloque de configuración de Disp. 7 Segmentos y Led RGB----------
+        Movb #$7F,DDRP      ; Habilito (pongo como salidas) PP6-PP4 (RGB LED)
+                            ; y PP3-PP0 (digitos de 7 segmentos)
+        movb #$0F,PTP           
+
+; -------------- Bloque de configuración de puerto de botones y DS ----------------
+        movb #$00,DDRH      ; Puerto H como entradas para botones y DIP SWITCHES 
+
+; ---------------- Bloque de configuración de convertidor ATD ------------------
+        movb #$20,ATD0CTL3  ; SNC = 2; 2 conversiones por secuencia
+        movb #$C8,ATD0CTL4  ; SRES8 = 1 (8 bits)  TODO: SMP1 = 0, SMP0 = 1, 4 Ciclos 
+        movb #$07,ATD0CTL5  ; CC=CB=CA=1, canal 7 del ATD
+; ---------------- Bloque de configuración Output Compare Canal 5 ------------
+        Movb #$90,TSCR1     ; TEN = 1 (Habilitar TIMER), TFFCA = 1 (Limpiar banderas)
+        Movb #$00,TSCR2     ; TOI = 0, PRS = 0 (SIN PREESCALADOR)
+        Movb #$20,TIOS      ; IOS5 = 1, canal 5 como output compare
+        Movb #$20,TIE       ; C5I = 1, interrupción del canal 5
+
+        ldd TCNT
+        addd #480           ; Valor de TCn para un periodo de 20 us
+        std TC5
+; ---------------- Bloque de configuración Teclado Matricial -------------------
+        movb #$F0,DDRA      ; pongo como salidas los 4 msb
+        movb #$01,PUCR      ; activo pull ups para puerto A
+        
+;===============================================================================
+;                           PROGRAMA PRINCIPAL
+;===============================================================================
+        Lds #$3BFF          ; Inicialización de puntero de pila
+        Cli                 ; habilitación de interrupciones
+        Clr Banderas_1      ; limpieza de variables en memoria
+        Clr Banderas_2
+        Clr LEDS
+        Clr Msg_L1
+        CLR Msg_L2
+        clr Punt_LCD
+        clr CharLCD
+        clr Cont_TCL
+
+        jsr Rutina_InitLCD  ; 
         ;movw #MSG1,Msg_L1
         ;movw #MSG2,Msg_L2
         ;bclr Banderas_2,LCD_OK
+
+;  ============================  Despachador de Tareas ==========================
 Despachador_Tareas
 ; ----- Mensajes LCD ------ ;
-        brset Banderas_2,LCD_OK,skipLCD
+        brset Banderas_2,LCD_OK,skipLCD     ; Si LCD_OK = 0, se ejecuta Tarea_LCD
         jsr Tarea_LCD
 skipLCD
-        Jsr Tarea_Led_Testigo
 
+        Jsr Tarea_Led_Testigo
         jsr Tarea_Teclado
         Jsr Tarea_LeerPB0
         Jsr Tarea_LeerPB1
         jsr Tarea_LeerDS
         jsr ControlModo
-        ;jsr Tarea_Borra_TCL
-        ;Jsr Tarea_Led_PB
-        ;jsr Tarea_Conversion
         jsr Tarea_Mux_Pantalla
         jsr Tarea_Brillo
         jsr Tarea_DsplzLeds
-        ;movb #$33,CharLCD
-               ;jsr Tarea_SendLCD
-
         Bra Despachador_Tareas
-        
-        
-        ;Est_Pres_DsplzLeds
+
 ;******************************************************************************
-;                               TAREA ModoInactivo
+;                              TAREA ModoInactivo
 ;******************************************************************************
+;   Esta tarea corresponde al modo inactivo de la aplicación de RADAR 623. Se
+;   encarga de desplegar el mensaje de Modo Inactivo en la pantalla de LCD. 
+;   Si se presiona PB1 o PB0 como LongPress se muestra el límite de velocidad 
+;   en los Display de 7 segmentos de la derecha durante un periodo de 3 segundos.  
 Tarea_ModoInactivo
                 ldx Est_Pres_TInac
                 jsr 0,x
-
-                       rts
-
+                rts
 ;============================ ModoInactivo ESTADO 1 ===============================
+;   En el primer estado se coloca el mensaje de modo inactivo en el LCD, y 
+;   también apaga los display de 7 segmentos. Siempre pasa al segundo estado. 
 TInac_Est1
-                movw #MSG_RADAR623,Msg_L1
+                movw #MSG_RADAR623,Msg_L1  ;Colocación de mensajes en los punteros 
                 movw #MSG_INACTIV,Msg_L2
-                bclr Banderas_2,LCD_OK
+                bclr Banderas_2,LCD_OK  ; borrar para correr LCD
                 
-                bset DDRP,$0F
+                bset DDRP,$0F           ; Apagar displays de 7 segmentos
                 bset PTP,$0F
                 movw #TInac_Est2,Est_Pres_TInac
                 rts
 ;============================ ModoInactivo ESTADO 2 ===============================
+;   Si se detecta un LongPress en alguno de los botones, se coloca la velocidad 
+;   límite en los display de 7 segmentos de la derecha.  
 TInac_Est2
-                brset Banderas_1,LongP0,mostrarInactivo
+                brset Banderas_1,LongP0,mostrarInactivo     
                 brset Banderas_1,LongP1,mostrarInactivo
-                bset DDRP,$0F
-                bset PTP,$0F
+                bset DDRP,$0F       
+                bset PTP,$0F    
                 bra ret_TInac_est2
-mostrarInactivo
-                movb #tTimerVLim,TimerDplzLeds
-                ldaa Vel_LIM
-                jsr Bin_BCD_MuxP
-                movb BCD,BCD2
-                jsr BCD_7Seg
-                movw #TInac_Est3,Est_Pres_TInac
+mostrarInactivo                                 
+                movb #tTimerVLim,TimerDplzLeds      ; cargar timer de 30*100 ms
+                ldaa Vel_LIM                        ; Se utilza TimerDplzLeds
+                jsr Bin_BCD_MuxP                    ; porque es inactivo en esta tarea
+                movb BCD,BCD2                       ; Colocar velocidad límite
+                jsr BCD_7Seg                        ; en 7 Dsp3, Dsp4
+                movw #TInac_Est3,Est_Pres_TInac     
                 ;bra just_ret_tinac2
 
 ret_TInac_est2
 
                  rts
 ;============================ ModoInactivo ESTADO 3 ===============================
+;   En el estado 3 se espera a que se acabe el timer TimerDplzLeds, que indica que 
+;   ya no se debe mostrar la velocidad límite en los 7 segmentos. 
 TInac_Est3
                 tst TimerDplzLeds
                 bne ret_TInac_est3
                 
                 movw #TInac_Est1,Est_Pres_TInac
-                bclr Banderas_1,LongP0
-                bclr Banderas_1,LongP1
-ret_TInac_est3  bset DDRP,$03
-                bset PTP,$03
+                bclr Banderas_1,LongP0          ; Limpiar banderas para que pueda
+                bclr Banderas_1,LongP1          ; ejecutarse de nuevo
+ret_TInac_est3  bset DDRP,$03                   ; Habilitar 2 displays de la
+                bset PTP,$03                    ; derecha
                 rts
 ;******************************************************************************
 ;                               TAREA DsplzLeds
 ;******************************************************************************
+;   Esta tarea se encarga de desplazar los cinco leds MSB de izquierda a derecha,
+;   un led a la vez. Utiliza la bandera DsplzIzquierda para saber si está
+;   recorriendo de izquiera a derecha o viceversa. 
 Tarea_DsplzLeds
                 ldx Est_Pres_DsplzLeds
                 jsr 0,x
        rts
 
 ;============================ DsplzLeds ESTADO 1 ===============================
+;   En el primer estado inicializa los timers, la variable de DplzLeds y el 
+;   próximo estado. DplzLeds contiene el patrón de LEDS. 
 DsplzLeds_Est1
                 brclr Banderas_2,Alarma,retDsplzLeds_est1
                 movw #DsplzLeds_Est2,Est_Pres_DsplzLeds
@@ -484,54 +475,75 @@ DsplzLeds_Est1
 retDsplzLeds_est1
                 rts
 ;========================== DsplzLeds ESTADO 1 ================================
+;   En el estado 2 se comprueba el valor actual del patrón de LEDS. Si se 
+;   determina que llegó al final de la respectiva orientación, cambia el valor
+;   de la bandera, para recorrer el patrón de la manera inversa. 
 DsplzLeds_Est2
                 tst TimerDplzLeds
                 bne retDsplzLeds_est2
                 brset Banderas_2,DsplzIzquierda,IzqADerecha
                 ; desplazamiento derecha a izquierda
                 ldaa DplzLeds
-                cmpa #$80
+                cmpa #$80       ; Llegó al final de la izquierda?
                 beq cambiarAIzq
-                lsl DplzLeds
+                lsl DplzLeds    ; No llegó al final, desplazar a la izquierda
                 bra dplz2_join
-cambiarAIzq
+cambiarAIzq     ; llegó al final de la izquierda - cambiar a izq-derecha
                 bset Banderas_2,DsplzIzquierda
                 bra dplz2_join
 IzqADerecha
                 ldaa DplzLeds
-                cmpa #$08
-                beq cambiarADer
-                lsr DplzLeds
+                cmpa #$08      ; llegó al final de la derecha?
+                beq cambiarADer 
+                lsr DplzLeds    ; No llegó al final, desplazar a la derecha
                 bra dplz2_join
-cambiarADer
-                bclr Banderas_2,DsplzIzquierda
+cambiarADer     ; llegó al final de la izquierda - cambiar a der-izq
+                bclr Banderas_2,DsplzIzquierda 
 
-dplz2_join      movb DplzLeds,LEDS
+dplz2_join      movb DplzLeds,LEDS ; se carga el valor a los LEDS
 
                 brset Banderas_2,Alarma,reloadLedTimer
                 movw #DsplzLeds_Est1,Est_Pres_DsplzLeds
                 bclr LEDS,$80
                 bra retDsplzLeds_est2
                 
-reloadLedTimer
+reloadLedTimer  ; se recarga el timer si Alarma sigue activa
                 movb #tTimerDplzLeds,TimerDplzLeds
 retDsplzLeds_est2
                 rts
 ;******************************************************************************
 ;                               TAREA EnServicio
 ;******************************************************************************
+;   EnServicio es la tarea de RADAR623 que realiza los cálculos y despliega la
+;   información relevante. Primeramente, carga los mensajes respectivos en 
+;   la pantalla LCD. Luego espera a que el usuario presione el botón de más
+;   a la izquierda (PB1) indicando que el vehículo pasó por el primer sensor.
+;   Luego espera a que el botón de más a la derecha sea presionado, y con la
+;   diferencia de tiempos entre los botones presionados, llama a la subrutina 
+;   Calcula, que se encarga de calcular las siguientes variables:
+;           -DeltaT (diferencia de tiempos entre sensor 1 y 2, décimas de segundo)
+;           -Vel_Calc (Velocidad del vehículo en km/h)
+;           -TimerPant (tiempo que le toma estar a 100 metros de la pantalla, 
+;                      (décimas de segundo)
+;           -TimerFinPant (tiempo que le toma alcanzar la pantalla)
+;   
+;   Esta tarea además, despliega información en los 7 segmentos y compara
+;   la velocidad calculada con el límite de velocidad, si supera el límite
+;   activa una alarma. 
 Tarea_EnServicio
                 ldx Est_Pres_TServ
                 jsr 0,x
        rts
 
 ;========================== EnServicio ESTADO 1 ================================
+;   Se cargan los mensajes en la pantalla LCD y se apagan los 7 segmentos.
+;   Pasa siempre al próximo estado.
 TareaServ_Est1  movw #MSG_RADAR623,Msg_L1
                 movw #MSG_ENSERV_WAIT,Msg_L2
                 bclr Banderas_2,LCD_OK
 
-                movb #$00,BCD1
-                movb #$00,BCD2
+                movb #$00,BCD1  ;TODO
+                movb #$00,BCD2  ;TODO
                 jsr BCD_7Seg
                 
                 bset DDRP,$0F
@@ -540,6 +552,8 @@ TareaServ_Est1  movw #MSG_RADAR623,Msg_L1
                 movw #TareaServ_Est2,Est_Pres_TServ
                 rts
 ;========================== EnServicio ESTADO 2 ================================
+;   En este estado se espera a que el usuario presione el PB1. Una vez presionado
+;   inicializa el timer de TimerVel y pasa al estado 3. 
 TareaServ_Est2
                 brclr Banderas_1,ShortP1,retEnServ_est2
 
@@ -559,67 +573,80 @@ retEnServ_est2  bset DDRP,$0F
 		rts
 
 ;========================== EnServicio ESTADO 3 ================================
+;   En el estado 3 se espera a que el usuario presione el botón PB0. Una vez 
+;   presionado, llama a la subrutina Calcula la cual se encarga de obtener las
+;   variables mencionadas en el encabezado. Si la velocidad calculada se 
+;   encuentra en el rango permitido (entre 45 y 99 km/h) se pasa al próximo
+;   estado. 
 TareaServ_Est3
                 brclr Banderas_1,ShortP0,retEnServ_est3
                 ;movb #$55,BCD2
                 ;jsr BCD_7Seg
-                movb #$80,Dsp4
-                movb #$80,Dsp3
+                movb #$80,Dsp4  ;TODO
+                movb #$80,Dsp3  ;TODO
                 jsr Calcula
+                nop         
                 nop
-                nop
-                ldaa Vel_Calc
+                ldaa Vel_Calc   
                 ;cmpa #20
-                cmpa #VelocMin
+                ; verificar si la velocidad se encuentra en el rango aceptable
+                cmpa #VelocMin      ; mayor a 45 km/h?
                 bls est3_go_error
-                cmpa #VelocMax
+                cmpa #VelocMax      ; menor a 99 km/h?
                 ;cmpa #200
                 bhs est3_go_error
-                movw #TareaServ_Est4,Est_Pres_TServ
+                movw #TareaServ_Est4,Est_Pres_TServ ; si se encuentra en el rango
+                                                    ; pasa al estado 4. 
 
                 bra retEnServ_est3
-                
+;   Si la velocidad no se encuentra en el rango permitido, se coloca el mensaje de 
+;   error y se ponen guiones en los 7 segmentos.                 
 est3_go_error
                 movw #MSG_ENSERV_ERR1,Msg_L1
                 movw #MSG_ENSERV_ERR2,Msg_L2
                 bclr Banderas_2,LCD_OK
-                movb #$AA,BCD1
+                movb #$AA,BCD1  ; valores para guiones en 7 segmentos. 
                 movb #$AA,BCD2
 
                 jsr BCD_7Seg
-                movb #tTimerError,TimerError
-
-                movw #TareaServ_Est5,Est_Pres_TServ
+                movb #tTimerError,TimerError    ; carga de timer de error
+                movw #TareaServ_Est5,Est_Pres_TServ ; y se pasa al estado 5
 retEnServ_est3
-		bset DDRP,$0F
-                bset PTP,$0F
-                bclr Banderas_1,ShortP0
-                bclr Banderas_1,ShortP1
+		        bset DDRP,$0F
+                bset PTP,$0F                ; apagar 7 segmentos 
+                bclr Banderas_1,ShortP0     ; borrar banderas de ShortP
+                bclr Banderas_1,ShortP1     ; para ser reutilizable 
 		rts
 ;========================== EnServicio ESTADO 4 ================================
+;   Se accede al estado 4 cuando la velocidad calculada se encuentra en los 
+;   límites apropiados del radar, es decir, cuando se calcula que la velocidad 
+;   del vehículo está entre 45 y 99 km/h.
+;   El estado 4 verifica si la velocidad calculada es menor a la velocidad 
+;   límite. De ser menor, el sistema desplega a la izquierda en los 7 segmentos
+;   la velocidad límite y a la derecha la velocidad del vehículo. 
+;   En caso de que la velocidad del vehículo sea mayor a la límite, hace lo mismo
+;   pero también activa una alarma durante 3 segundos.
+;   El despliegue de información ocurre cuando el TimerPant se hace igual a 0.
+;   Esto quiere decir que el vehículo se encuentra a 100 metros de la pantalla.  
 TareaServ_Est4
                 tst TimerPant
                 bne retEnServ_est4
                 ldaa Vel_LIM
-                jsr Bin_BCD_MuxP
+                jsr Bin_BCD_MuxP   ; colocación de la velocidad límite a la izq 
                 movb BCD,BCD1
                 ldaa Vel_Calc
-                jsr Bin_BCD_MuxP
+                jsr Bin_BCD_MuxP   ; colocación de la velocidad calculada a la der
                 movb BCD,BCD2
-                jsr BCD_7Seg
+                jsr BCD_7Seg    
                 ldaa Vel_Calc
                 cmpa Vel_LIM
-                bhi es4_go_alarm
-                movw #MSG_ENSERV1,Msg_L1
+                bhi es4_go_alarm    ; si es mayor, activar alarma
+                movw #MSG_ENSERV1,Msg_L1    ; si es menor, desplegar info normal
                 movw #MSG_ENSERV_INDI,Msg_L2
                 bclr Banderas_2,LCD_OK
                 bra  EnServ4_to6
                 
-                
-                
-                
-
-es4_go_alarm
+es4_go_alarm    ; solo si la velocidad del vehiculo supera el límite
                 movw #MSG_ENSERV_ALR1,Msg_L1
                 movw #MSG_ENSERV_INDI,Msg_L2
                 bclr Banderas_2,LCD_OK
@@ -627,11 +654,15 @@ es4_go_alarm
                 
 EnServ4_to6     movw #TareaServ_Est6,Est_Pres_TServ
 retEnServ_est4
-		bset DDRP,$03
+		        bset DDRP,$03
                 bset PTP,$03
-		rts
+		        rts
 
 ;========================== EnServicio ESTADO 5 ================================
+;   Este estado solo se accede cuando la velocidad del vehículo no se encuentra
+;   entre los límites del sensor (45 hasta 99 km/h). En este estado se espera a
+;   que se acabe el timer de error, para que se deje de desplegar el mensaje de 
+;   error y pase al estado inicial.
 TareaServ_Est5
                 tst TimerError
                 bne retEnServ_est5
@@ -640,6 +671,11 @@ TareaServ_Est5
 retEnServ_est5  rts
 
 ;========================== EnServicio ESTADO 6 ================================
+;   Este estado ocurre cuando la velocidad del vehículo se encuentra entre los 
+;   límites del sensor. Se espera a que se acabe el TimerFinPant, que indica
+;   que el vehículo alcanzó a la pantalla, indicando que ya debe dejar de 
+;   desplegar información en el LCD y en los 7 segmentos, por lo tanto,
+;   se pasa al estado 1. 
 TareaServ_Est6
                 tst TimerFinPant
                 bne retEnServ_est6
@@ -650,41 +686,60 @@ retEnServ_est6  rts
 ;******************************************************************************
 ;                               SUBRUTINA CALCULA
 ;******************************************************************************
+;   CALCULA se encarga de calcular las variables necesarias para la tarea
+;   EnServicio del RADAR623.
+;   Recibe: El valor del timer TimerVel 
+;   Entrega: las siguientes variables 
+;           -DeltaT (diferencia de tiempos entre sensor 1 y 2, décimas de segundo)
+;           -Vel_Calc (Velocidad del vehículo en km/h)
+;           -TimerPant (tiempo que le toma estar a 100 metros de la pantalla, 
+;                      (décimas de segundo)
+;           -TimerFinPant (tiempo que le toma alcanzar la pantalla) 
+;   Las ecuaciones implementadas son las siguientes. El por qué de las mismas se 
+;   detalla en el reporte de esta entrega. 
+;
+;           DeltaT = 100 - TimerVel
+;
+;           Vel_Calc = 1440/DeltaT
+;
+;           TimerPant = 200/((Vel_Calc*10)/36)  = 200/(Vel_Calc/3.6)
+;
+;           TimerFinPant = 300/((Vel_Calc*10)/36)  = 300/(Vel_Calc/3.6)
 Calcula
                 ldaa #100
                 ldab TimerVel
                 sba
-                staa DeltaT
+                staa DeltaT ; DeltaT = 100 - TimerVel
                 
 
-                tab
-                clra  ; muevo DeltaT a parte baja y limpio parte alta
-                xgdx  ; muevo DeltaT a punt.X como divisor
+                tab   
+                clra       ; muevo DeltaT a parte baja y limpio parte alta
+                xgdx       ; muevo DeltaT a X como divisor
                 ldd #1440  ; cargo dividiendo
-                idiv
-                xgdx          ; resultado desplazo a acum. D
+                idiv       ; Vel_Calc = 1440/DeltaT
+                xgdx       ; resultado desplazo a acumulador D
                 stab Vel_Calc       ; guardo parte baja como Vel_Calc
                 
-                clra
-                ldab Vel_Calc
+                clra        
+                ldab Vel_Calc       
                 ldy #10
-                emul
+                emul            ; Vel_Calc * 10
                 ldx #36
-                idiv
+                idiv            ; Vel_Calc * 10/36
                 pshx
-                ldd #200
-                idiv
-                xgdx
-                ldy #10
-                emul
+                ldd #200        
+                idiv            ; TimerPant = 200/(Vel_Calc * 10/36)
+                xgdx            ; en segundos
+                ldy #10         ; lo multiplico por 10 para ser consistente
+                emul            ; con las unidades de TimerPant
                 stab TimerPant
                 
                 pulx
-                ldd #300
+                ldd #300    
                 idiv
-                xgdx
-                ldy #10
-                emul
+                xgdx        ; TimerPant = 300/(Vel_Calc * 10/36)
+                ldy #10     ; lo multiplico por 10 para ser consistente
+                emul        ; con las unidades de TimerPant
                 stab TimerFinPant
                 
                 rts
@@ -692,12 +747,22 @@ Calcula
 ;******************************************************************************
 ;                               TAREA MODO CONFIGURAR
 ;******************************************************************************
+;   CONFIGURAR corresponde al modo de RADAR623 donde se puede modificar la 
+;   velocidad límite del radar. Esta tarea hace uso de la subrutina de 
+;   Leer_Teclado que se encarga de leer las teclas del teclado matricial.
+;   y a su vez se ejecuta la Tarea Teclado que se encarga de conformar un 
+;   arreglo de teclas válido. 
 Tarea_Configurar
                 ldx Est_Pres_TConfig
                 jsr 0,x
        rts
 
 ;========================== CONFIGURAR ESTADO 1 ================================
+;   Se cargan los mensajes en LCD y se apagan los displays de 7 segmentos de 
+;   más a la izquierda.
+;   Carga el valor de Vel_LIM, lo convierte de binario a bcd y lo pone en los 
+;   displays de más a la derecha. También limpia el Num_Array por si hay valores
+;   no previstos. 
 TareaConfig_Est1
                 ;bclr Banderas_2,SecondLine
                 movw #MSG_CONFIG2,Msg_L2
@@ -720,6 +785,11 @@ TareaConfig_Est1
 return_config_est1
                 rts
 ;========================== CONFIGURAR ESTADO 2 ================================
+;   Cuando se detecta la bandera Array_Ok, se convierte el valor de Num_Array
+;   a binario y se compara con los valores de velocidades límites máximos 
+;   y minimos para ver si es aceptable. Si se determina que se encuentra en el
+;   rango, se guarda el nuevo valor en Vel_LIM, y se pasa nuevamente al estado 1. 
+
 TareaConfig_Est2
                 brclr Banderas_1,Array_OK,retConfig_est2
                 jsr BCD_BIN
