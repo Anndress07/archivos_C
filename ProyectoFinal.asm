@@ -14,7 +14,7 @@
 ;******************************************************************************
 
 ; ------------------------------ TAREA TECLADO ---------------------------------
-tSuprRebTCL		EQU 20
+tSuprRebTCL                EQU 20
 
 ; ---------------------------- TAREA PANTALLA_MUX ------------------------------
 tTimerDigito            EQU 2
@@ -31,68 +31,68 @@ ADD_L1                  EQU $80
 ADD_L2                  EQU $C0
 
 ; ------------------------- TAREAS LEER_PB1, LEER_PB0 --------------------------
-PortPB             	EQU PTIH
-tSupRebPB0         	EQU 10
-tSupRebPB1         	EQU 10
-tShortP0           	EQU 25
-tShortP1           	EQU 25
-tLongP0            	EQU 3
-tLongP1            	EQU 3
-MaskPB1            	EQU $04
-MaskPB0            	EQU $01
+PortPB                     EQU PTIH
+tSupRebPB0                 EQU 10
+tSupRebPB1                 EQU 10
+tShortP0                   EQU 25
+tShortP1                   EQU 25
+tLongP0                    EQU 3
+tLongP1                    EQU 3
+MaskPB1                    EQU $04
+MaskPB0                    EQU $01
 
 ; ---------------------------- TAREA CONFIGURAR --------------------------------
 
-LDConfig         	EQU $02
-LimMax           	EQU 90
-LimMin           	EQU 65
+LDConfig                 EQU $02
+LimMax                   EQU 90
+LimMin                   EQU 65
 
 ; ---------------------------- TAREA INACTIVO ----------------------------------
-LDInac           	EQU $01
-tTimerVLim       	EQU 30
+LDInac                   EQU $01
+tTimerVLim               EQU 30
 
 ; --------------------------- TAREA EnServicio ---------------------------------
 
-LDEnServ          	EQU $04
-tTimerVel         	EQU 100
-tTimerError       	EQU 3
-VelocMin          	EQU 45
-VelocMax          	EQU 99
+LDEnServ                  EQU $04
+tTimerVel                 EQU 100
+tTimerError               EQU 3
+VelocMin                  EQU 45
+VelocMax                  EQU 99
 
 ; ------------------------------ TAREA Brillo ----------------------------------
-tTimerBrillo       	EQU 4
-MaskSCF            	EQU $80
+tTimerBrillo               EQU 4
+MaskSCF                    EQU $80
 
 ; ------------------------------ TAREA LeerDS ----------------------------------
-tTimerRebDS       	EQU 10
+tTimerRebDS               EQU 10
 
 ; --------------------------- TAREA DesplazarLeds ------------------------------
-tTimerDplzLeds    	EQU 1
+tTimerDplzLeds            EQU 1
 
 ; ------------------------------- Banderas -------------------------------------
 ; ----- Banderas_1
-ShortP0           	EQU $01
-LongP0            	EQU $02
-ShortP1           	EQU $04
-LongP1            	EQU $08
-Array_OK          	EQU $10
+ShortP0                   EQU $01
+LongP0                    EQU $02
+ShortP1                   EQU $04
+LongP1                    EQU $08
+Array_OK                  EQU $10
 ; ----- Banderas_2
-RS                	EQU $01
-LCD_OK            	EQU $02
-FinSendLCD        	EQU $04
-SecondLine        	EQU $08
-Alarma            	EQU $10
-DsplzIzquierda    	EQU $20
+RS                        EQU $01
+LCD_OK                    EQU $02
+FinSendLCD                EQU $04
+SecondLine                EQU $08
+Alarma                    EQU $10
+DsplzIzquierda            EQU $20
 ; -------------------------------- GENERALES -----------------------------------
-tTimerLDTst       	EQU 5     ;Tiempo de parpadeo de LED testigo en segundos
+tTimerLDTst               EQU 5     ;Tiempo de parpadeo de LED testigo en segundos
 
 
 ;--- Aqui se colocan los valores de carga para los timers baseT  ----
 
-tTimer1mS:        	EQU 50     ;Base de tiempo de 1 mS (1 ms x 1 / 20us)
-tTimer10mS:       	EQU 500    ;Base de tiempo de 10 mS (1 mS x 10 / 20us)
-tTimer100mS:      	EQU 5000    ;Base de tiempo de 100 mS (10 mS x 100 / 20us)
-tTimer1S:         	EQU 50000    ;Base de tiempo de 1 segundo (100 mS x 10 / 20us)
+tTimer1mS:                EQU 50     ;Base de tiempo de 1 mS (1 ms x 1 / 20us)
+tTimer10mS:               EQU 500    ;Base de tiempo de 10 mS (1 mS x 10 / 20us)
+tTimer100mS:              EQU 5000    ;Base de tiempo de 100 mS (10 mS x 100 / 20us)
+tTimer1S:                 EQU 50000    ;Base de tiempo de 1 segundo (100 mS x 10 / 20us)
 
 ;******************************************************************************
 ;                   DECLARACION DE LAS ESTRUCTURAS DE DATOS
@@ -144,42 +144,42 @@ EstPres_SendLCD         ds 2  ;103A
 EstPres_TareaLCD        ds 2  ;$103C
 
 ; ------------------------- TAREAS LEER_PB1, LEER_PB0 --------------------------
-Est_Pres_LeerPB0   	ds 2       ;103E
-Est_Pres_LeerPB1   	ds 2       ;1040
+Est_Pres_LeerPB0           ds 2       ;103E
+Est_Pres_LeerPB1           ds 2       ;1040
 
 ; ---------------------------- TAREA CONFIGURAR --------------------------------
-Est_Pres_TConfig  	ds 2        ;1042
-ValorLIM          	ds 1        ;1043
-Vel_LIM           	dB 65       ;1044
+Est_Pres_TConfig          ds 2        ;1042
+ValorLIM                  ds 1        ;1043
+Vel_LIM                   dB 65       ;1044
 
 ; ---------------------------- TAREA INACTIVO ---------------------------------
-Est_Pres_TInac    	ds 2        ;1046
+Est_Pres_TInac            ds 2        ;1046
 
 ; ----------------------------- TAREA EnServicio -------------------------------
-Est_Pres_TServ    	ds 2        ;1048
-Vel_Calc          	ds 1        ;1049
-DeltaT            	ds 1        ;104A
+Est_Pres_TServ            ds 2        ;1048
+Vel_Calc                  ds 1        ;1049
+DeltaT                    ds 1        ;104A
 
 ; ------------------------------ TAREA Brillo ----------------------------------
-Est_Pres_TBrillo   	ds 2       ;104C
+Est_Pres_TBrillo           ds 2       ;104C
 
 ; ------------------------------ TAREA LeerDS ----------------------------------
-Est_Pres_LeerDS    	ds 2       ;104E
-Temp_DS            	ds 1       ;104F
-Valor_DS           	ds 1       ;1050
+Est_Pres_LeerDS            ds 2       ;104E
+Temp_DS                    ds 1       ;104F
+Valor_DS                   ds 1       ;1050
 
 ; --------------------------- TAREA DesplazarLeds ------------------------------
-Est_Pres_DsplzLeds 	ds 2       ;1052
-DplzLeds           	ds 1       ;1053
+Est_Pres_DsplzLeds         ds 2       ;1052
+DplzLeds                   ds 1       ;1053
 
 ; -------------------------------- BANDERAS ------------------------------------
                                 org $1070
-Banderas_1        	ds 1
-Banderas_2        	ds 1
-Banderas          	ds 1
+Banderas_1                ds 1
+Banderas_2                ds 1
+Banderas                  ds 1
 
 ; -------------------------------- GENERALES -----------------------------------
-LED_Testigo       	ds 1
+LED_Testigo               ds 1
 
 ; --------------------------------- TABLAS -------------------------------------
                                     org $1100
@@ -235,68 +235,68 @@ MSG_INACTIV     FCC "  MODO INACTIVO "
                                 Org $1500
 Tabla_Timers_BaseT:
 
-Timer1mS        	ds 2       ;1040-1041
-Timer10mS:      	ds 2       ;1042-1043
-Timer100mS:     	ds 2       ;1044-1045
-Timer1S:        	ds 2       ;1045-1046
-Timer260uS:     	ds 2
-Timer40uS:      	ds 2
+Timer1mS                ds 2       ;1040-1041
+Timer10mS:              ds 2       ;1042-1043
+Timer100mS:             ds 2       ;1044-1045
+Timer1S:                ds 2       ;1045-1046
+Timer260uS:             ds 2
+Timer40uS:              ds 2
 
-Counter_Ticks   	ds 2       ;1047-1048
+Counter_Ticks           ds 2       ;1047-1048
 
-Fin_BaseT       	dW $FFFF   ;1049-104A
+Fin_BaseT               dW $FFFF   ;1049-104A
 
 Tabla_Timers_Base1mS
 
-Timer_Digito    	ds 1      ;104B
-Timer_RebPB0    	ds 1      ;104C
-Timer_RebPB1    	ds 1      ;104C
-Timer_RebTCL    	ds 1      ;104D
-Timer2mS        	ds 1
-TimerRebDS      	ds 1
+Timer_Digito            ds 1      ;104B
+Timer_RebPB0            ds 1      ;104C
+Timer_RebPB1            ds 1      ;104C
+Timer_RebTCL            ds 1      ;104D
+Timer2mS                ds 1
+TimerRebDS              ds 1
 
 
 ;Timer1_Base1:   ds 1       ;Ejemplos de timers de aplicacion con BaseT
 ;Timer2_Base1:   ds 1
 
-Fin_Base1mS:    	dB $FF
+Fin_Base1mS:            dB $FF
 
 Tabla_Timers_Base10mS
 
-Timer_SHP0      	ds 1
-Timer_SHP1      	ds 1
+Timer_SHP0              ds 1
+Timer_SHP1              ds 1
 ;Timer1_Base10: ds 1       ;Ejemplos de timers de aplicacion con base 10 mS
 ;Timer2_Base10: ds 1
 
-Fin_Base10ms    	dB $FF
+Fin_Base10ms            dB $FF
 
 Tabla_Timers_Base100mS
 
-Timer1_100mS    	ds 1
-Timer_LED_Testigo 	ds 1   ;Timer para parpadeo de led testigo
-TimerBrillo       	ds 1
-TimerVel          	ds 1 ; Timer para el calculo de velocidad EnServicio
-TimerPant         	ds 1
-TimerFinPant      	ds 1
-TimerDplzLeds     	ds 1
-;Timer1_Base100  	ds 1       ;Ejemplos de timers de aplicacpon con base 100 mS
-;Timer2_Base100  	ds 1
+Timer1_100mS            ds 1
+Timer_LED_Testigo         ds 1   ;Timer para parpadeo de led testigo
+TimerBrillo               ds 1
+TimerVel                  ds 1 ; Timer para el calculo de velocidad EnServicio
+TimerPant                 ds 1
+TimerFinPant              ds 1
+TimerDplzLeds             ds 1
+;Timer1_Base100          ds 1       ;Ejemplos de timers de aplicacpon con base 100 mS
+;Timer2_Base100          ds 1
 
-Fin_Base100mS   	dB $FF
+Fin_Base100mS           dB $FF
 
 Tabla_Timers_Base1S
 
 
-Timer_LP0          	ds 1
-Timer_LP1          	ds 1
-TimerError         	ds 1
-TimerInac          	ds 1
+Timer_LP0                  ds 1
+Timer_LP1                  ds 1
+TimerError                 ds 1
+TimerInac                  ds 1
 
 
-;Timer1_Base1S:    	ds 1   ;Ejemplos de timers de aplicacion con base 1 seg.
-;Timer2_Base1S:    	ds 1
+;Timer1_Base1S:            ds 1   ;Ejemplos de timers de aplicacion con base 1 seg.
+;Timer2_Base1S:            ds 1
 
-Fin_Base1S        	dB $FF
+Fin_Base1S                dB $FF
 
 ;Tabla_Timers_Base260uS
 
@@ -453,7 +453,7 @@ mostrarInactivo
 
 ret_TInac_est2
 
-		 rts
+                 rts
 ;============================ ModoInactivo ESTADO 3 ===============================
 TInac_Est3
                 tst TimerDplzLeds
@@ -548,29 +548,35 @@ TareaServ_Est2
                 bclr Banderas_2,LCD_OK
                 
                 bclr Banderas_1,ShortP1
-                bset DDRP,$0F
-                bset PTP,$0F
+                ;bset DDRP,$0F
+                ;bset PTP,$0F
                 
                 movb #tTimerVel,TimerVel
                 movw #TareaServ_Est3,Est_Pres_TServ
 
-retEnServ_est2  rts
+retEnServ_est2  bset DDRP,$0F
+                bset PTP,$0F
+		rts
 
 ;========================== EnServicio ESTADO 3 ================================
 TareaServ_Est3
                 brclr Banderas_1,ShortP0,retEnServ_est3
+                ;movb #$55,BCD2
+                ;jsr BCD_7Seg
+                movb #$80,Dsp4
+                movb #$80,Dsp3
                 jsr Calcula
                 nop
                 nop
                 ldaa Vel_Calc
-                cmpa #20
-                ;cmpa #VelocMin
+                ;cmpa #20
+                cmpa #VelocMin
                 bls est3_go_error
-                ;cmpa #VelocMax
-                cmpa #200
+                cmpa #VelocMax
+                ;cmpa #200
                 bhs est3_go_error
                 movw #TareaServ_Est4,Est_Pres_TServ
-                bclr Banderas_1,ShortP0
+
                 bra retEnServ_est3
                 
 est3_go_error
@@ -579,11 +585,17 @@ est3_go_error
                 bclr Banderas_2,LCD_OK
                 movb #$AA,BCD1
                 movb #$AA,BCD2
+
                 jsr BCD_7Seg
                 movb #tTimerError,TimerError
-                bclr Banderas_1,ShortP0
+
                 movw #TareaServ_Est5,Est_Pres_TServ
-retEnServ_est3  rts
+retEnServ_est3
+		bset DDRP,$0F
+                bset PTP,$0F
+                bclr Banderas_1,ShortP0
+                bclr Banderas_1,ShortP1
+		rts
 ;========================== EnServicio ESTADO 4 ================================
 TareaServ_Est4
                 tst TimerPant
@@ -614,7 +626,10 @@ es4_go_alarm
                 bset Banderas_2,Alarma
                 
 EnServ4_to6     movw #TareaServ_Est6,Est_Pres_TServ
-retEnServ_est4  rts
+retEnServ_est4
+		bset DDRP,$03
+                bset PTP,$03
+		rts
 
 ;========================== EnServicio ESTADO 5 ================================
 TareaServ_Est5
@@ -725,7 +740,9 @@ TareaConfig_Est2
 est2_conf_borrartcl
                 jsr Borrar_NumArray
                 bclr Banderas_1,Array_OK
-retConfig_est2  rts
+retConfig_est2  bset DDRP,$03
+                bset PTP,$03
+                rts
 
 ;******************************************************************************
 ;                               Subrutina Control Modo
