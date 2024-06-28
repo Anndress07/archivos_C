@@ -570,7 +570,7 @@ TareaServ_Est2
 
 retEnServ_est2  bset DDRP,$0F
                 bset PTP,$0F
-		rts
+                rts
 
 ;========================== EnServicio ESTADO 3 ================================
 ;   En el estado 3 se espera a que el usuario presione el botón PB0. Una vez
@@ -612,11 +612,11 @@ est3_go_error
                 movb #tTimerError,TimerError    ; carga de timer de error
                 movw #TareaServ_Est5,Est_Pres_TServ ; y se pasa al estado 5
 retEnServ_est3
-		        bset DDRP,$0F
+                        bset DDRP,$0F
                 bset PTP,$0F                ; apagar 7 segmentos
                 bclr Banderas_1,ShortP0     ; borrar banderas de ShortP
                 bclr Banderas_1,ShortP1     ; para ser reutilizable
-		rts
+                rts
 ;========================== EnServicio ESTADO 4 ================================
 ;   Se accede al estado 4 cuando la velocidad calculada se encuentra en los
 ;   límites apropiados del radar, es decir, cuando se calcula que la velocidad
@@ -654,9 +654,9 @@ es4_go_alarm    ; solo si la velocidad del vehiculo supera el límite
 
 EnServ4_to6     movw #TareaServ_Est6,Est_Pres_TServ
 retEnServ_est4
-		        bset DDRP,$03
+                        bset DDRP,$03
                 bset PTP,$03
-		        rts
+                        rts
 
 ;========================== EnServicio ESTADO 5 ================================
 ;   Este estado solo se accede cuando la velocidad del vehículo no se encuentra
@@ -1742,25 +1742,30 @@ process
 ; ==============================================================================
 ; ============================== Subrutina BCD-7Seg ============================
 ; ==============================================================================
-BCD_7Seg                                                                    ;-
+;   Esta subrutina se encarga de convertir los valores en las variables 
+;   BCD1 y BCD2, que ambas se encuentran en BCD, a formato de 7 segmentos. 
+;   La subrutina toma el BCD1 y coloca su MSB en Dsp1 y el LSB en Dsp2.
+;   Para BCD2, coloca su MSB en Dsp3 y el LSB en Dsp4.
+
+BCD_7Seg                        ; TODO: Optimizar esto en código                                                        ;-
                 ;Segment         dB $3F,$06,$5B,$4F,$66,$6D,$7D,$07,$7F,$6F,$40
                 ; aa = 99
-                ldx #Segment
-                ldaa BCD1
-                psha
-                anda #$F0
+                ldx #Segment    ; Cargo la tabla con los valores en formato 7 segm
+                ldaa BCD1       
+                psha            ; guardo BCD1
+                anda #$F0       ; tomo la parte alta
                 lsra
                 lsra
                 lsra
-                lsra
-                ldab a,x
-                stab Dsp1 ; decenas BCD1 en DISP1
+                lsra            ; lo desplazo para que me quede a la derecha
+                ldab a,x        ; indexo por acumulador 
+                stab Dsp1       ; guardo las decenas BCD1 en Disp1
 
-                pula
-                anda #$0F
-                ldab a,x
-                stab Dsp2 ; unidades BCD1 en DISP2
-
+                pula            ; cargo BCD1 en A
+                anda #$0F       ; tomo la parte baja
+                ldab a,x        ; indexo con el valor de la parte baja
+                stab Dsp2       ; unidades BCD1 en DISP2
+                ; se repite el procedimiento para BCD2. 
                 ldaa BCD2
                 psha
                 anda #$F0
@@ -1769,51 +1774,62 @@ BCD_7Seg                                                                    ;-
                 lsra
                 lsra
                 ldab a,x
-                stab Dsp3 ; decenas BCD2 en DISP3
+                stab Dsp3       ; decenas BCD2 en DISP3
 
                 pula
                 anda #$0F
                 ldab a,x
-                stab Dsp4 ; unidades BCD2 en DISP4
+                stab Dsp4       ; unidades BCD2 en DISP4
 
                 rts
 
 ; ==============================================================================
 ; ============================= Subrutina Leer Teclado =========================
 ; ==============================================================================
-Leer_Teclado            movb #$EF,PATRON
-                        ldx #Teclas
-loop_leer_teclado       movb PATRON,PORTA
+;   Esta subrutina se encarga de leer el teclado matricial para ver si el usuario
+;   ha presionado una tecla o no. Esto lo hace desplazando un 0 en los bits más
+;   significativos del puerto A. Después, la subrutina detecta si alguno de los
+;   bits menos significativos se hace 0. Si esto pasa, significa que se presionó
+;   una tecla. Dependiendo del bit LSB que se hace 0, y dependiendo del valor
+;   actual de la máscara PATRON, se puede saber cuál fue la tecla presionada. 
+
+Leer_Teclado            movb #$EF,PATRON    ; Patrón inicia con un 0 en bit 4
+                        ldx #Teclas         ; carga dirección de teclas
+loop_leer_teclado       movb PATRON,PORTA   
                         ;clrb
                         nop
                         nop
                         nop
+; si el bit 3 se hizo 0, significa que se presionó alguna tecla de la columna 3
                         brclr PORTA,$04,tcl_colu2
+; si el bit 2 se hizo 0, significa que se presionó alguna tecla de la columna 2 
                         brclr PORTA,$02,tcl_colu1
+; si el bit 1 ser hizo 0, se presionó de la columna 1       
                         brclr PORTA,$01,tcl_colu0
-                        orcc #$01
-                        rol PATRON
-                        ldab PATRON
-                        cmpb #$FF
-                        bne loop_leer_teclado
-                        ldaa #$FF
+; si el bit 0 se hizo 0, se presionó de la columna 0 
+                        orcc #$01       ; Fuerzo un 1 en el carry
+                        rol PATRON      ; para desplazar con 1s 
+                        ldab PATRON     ; me fijo si el PATRON ya se llenó de 1s
+                        cmpb #$FF       ; mientras no este lleno de 1s, salta
+                        bne loop_leer_teclado   ; al loop de leer teclado
+                        ldaa #$FF       ; TODO: ver esto
                         lbra exit_leer_teclado
-tcl_colu1
+tcl_colu1       ; se llega a este branch si se presionó una tecla de la col1 
 
-        brclr PORTA,$20,dig5
-        brclr PORTA,$40,dig8
-        brclr PORTA,$80,dig0
-        brclr PORTA,$10,dig2
+        brclr PORTA,$20,dig5  ; Si el patrón es 1101, se presionó la tecla 5
+        brclr PORTA,$40,dig8  ; patrón 1011, presionó tecla 8
+        brclr PORTA,$80,dig0  ; patrón 0111, presionó tecla 0
+        brclr PORTA,$10,dig2  ; patrón 1110, presionó tecla 2
         lbra exit_leer_teclado
 
-tcl_colu0
+tcl_colu0       ; se llega a este branch si se presionó una tecla de col0
         brclr PORTA,$10,dig1
         brclr PORTA,$20,dig4
         brclr PORTA,$40,dig7
         brclr PORTA,$80,digB
         lbra exit_leer_teclado
 
-tcl_colu2
+tcl_colu2       ; se llega a este branch si se presionó una tecla de col2
         brclr PORTA,$10,dig3
         brclr PORTA,$20,dig6
         brclr PORTA,$40,dig9
@@ -1822,7 +1838,11 @@ tcl_colu2
 
 
 
-; Teclas            dB $01,$02,$03,$04,$05,$06,$07,$08,$09,$0B,$00,$0E
+;  En esta parte se implementa la lógica para colocar la tecla presionada 
+;  en el valor de Tecla. Lo que se hace es cargar el valor de la Tecla - 1
+;  en el acumulador A (digE tiene valor de 12, digB tiene el valor de 10)
+;  y se indexa por acumulador A la lista de teclas que fue cargada en el
+;  acumulador X.
 dig1    clrb
         ldaa b,x
         staa Tecla
