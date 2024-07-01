@@ -53,10 +53,10 @@ PortPB                     EQU PTIH ; Puerto de los pushbuttons
 tSupRebPB0                 EQU 10   ; Supr. rebotes para el botón PH0 (10 ms)
 tSupRebPB1                 EQU 10   ; Supr. rebotes para el botón PH3 (10 ms)
 tShortP0                   EQU 25   ; Tiempo de short press, PH0 (25 ms)
-tShortP1                   EQU 25   ; Tiempo de short press, PH1 (25 ms)
+tShortP1                   EQU 25   ; Tiempo de short press, PH3 (25 ms)
 tLongP0                    EQU 3    ; Tiempo de long press, PH0 (3 s)
-tLongP1                    EQU 3    ; Tiempo de long press, PH1 (3 ms)
-MaskPB1                    EQU $08  ; TODO: Máscara para el botón PH2
+tLongP1                    EQU 3    ; Tiempo de long press, PH3 (3 ms)
+MaskPB1                    EQU $08  ; Máscara para el botón PH3
 MaskPB0                    EQU $01  ; Máscara para el botón PH0
 
 ; ---------------------------- TAREA CONFIGURAR --------------------------------
@@ -93,8 +93,8 @@ tTimerDplzLeds            EQU 1     ; Cadencia de desplazamiento de LEDS
 ; ----------  Banderas_1
 ShortP0                   EQU $01   ; flag de Short press para el PH0
 LongP0                    EQU $02   ; flag de Long press para el PH0
-ShortP1                   EQU $04   ; flag de Short press para el PH1
-LongP1                    EQU $08   ; flag de Long press para el PH1
+ShortP1                   EQU $04   ; flag de Short press para el PH3
+LongP1                    EQU $08   ; flag de Long press para el PH3
 Array_OK                  EQU $10   ; flag de finalización de escritura con el
                                     ; teclado matricial
 ; ---------- Banderas_2
@@ -107,6 +107,7 @@ DsplzIzquierda            EQU $20   ; flag que indica que los leds van de izq a 
 
 ; -------------------------------- GENERALES -----------------------------------
 tTimerLDTst               EQU 5     ; Tiempo de parpadeo de LED testigo (500 ms)
+Carga_TC5                 EQU 480
 
 tTimer1mS:                EQU 50     ;Base de tiempo de 1 mS (1 ms x 1 / 20us)
 tTimer10mS:               EQU 500    ;Base de tiempo de 10 mS (1 mS x 10 / 20us)
@@ -342,7 +343,8 @@ Fin_Base1S                dB $FF
 
 ; ---------------- Bloque de configuración de convertidor ATD ------------------
         movb #$20,ATD0CTL3  ; SNC = 2; 2 conversiones por secuencia
-        movb #$C8,ATD0CTL4  ; SRES8 = 1 (8 bits)  TODO: SMP1 = 0, SMP0 = 1, 4 Ciclos
+        movb #$A8,ATD0CTL4  ; SRES8 = 1 (8 bits) SMP1 = 0, SMP0 = 1, 4 Ciclos
+                            ; PRS = 18 = %01000
         movb #$07,ATD0CTL5  ; CC=CB=CA=1, canal 7 del ATD
 ; ---------------- Bloque de configuración Output Compare Canal 5 ------------
         Movb #$90,TSCR1     ; TEN = 1 (Habilitar TIMER), TFFCA = 1 (Limpiar banderas)
@@ -351,7 +353,7 @@ Fin_Base1S                dB $FF
         Movb #$20,TIE       ; C5I = 1, interrupción del canal 5
 
         ldd TCNT
-        addd #480           ; Valor de TCn para un periodo de 20 us
+        addd #Carga_TC5     ; Valor de TCn para un periodo de 20 us
         std TC5
 ; ---------------- Bloque de configuración Teclado Matricial -------------------
         movb #$F0,DDRA      ; pongo como salidas los 4 msb
@@ -949,7 +951,7 @@ ret_brillo_est2
 TareaBrillo_Est3
                 brclr ATD0STAT0,MaskSCF,ret_brillo_est3
                 ldd ADR00H      ; Se suman las dos conversiones por ciclo
-                addd ADR00H     ; TODO: preguntar si es este registro
+                addd ADR01H     ; TODO: preguntar si es este registro
                 lsrd            ; se divide entre dos para obtener el promedio
                 nop
                 nop
@@ -979,25 +981,7 @@ TareaBrillo_Est3
 
 
 ret_brillo_est3 rts
-;******************************************************************************
-;                               TAREA CONVERSION
-;******************************************************************************
-Tarea_Conversion
-                        ;ldaa BIN1
-                        ;jsr Bin_BCD_MuxP
-                        ;movb BCD,BCD1
 
-
-
-                        ;ldaa BIN2
-                        ;jsr Bin_BCD_MuxP
-                        ;movb BCD,BCD2
-
-
-
-                        ;jsr BCD_7Seg
-
-                        rts
 
 ;******************************************************************************
 ;                               Rutina InitLCD
@@ -1387,20 +1371,6 @@ borrar_na_loop  ; loop para borrar Num_Array
 
 
 ;******************************************************************************
-;                               TAREA LED_PB
-;******************************************************************************
-Tarea_LED_PB
-                brset Banderas_1,ShortP1,ON
-                brset Banderas_1,LongP1,OFF
-                bra FIN_Led
-ON              BClr Banderas_1,LongP1
-                Bset PORTB,$01
-                bra FIN_Led
-OFF             bclr Banderas_1,ShortP1
-                bclr PORTB,$01
-
-FIN_Led         rts
-;******************************************************************************
 ;                               TAREA LEER_PB0
 ;******************************************************************************
 ;   Esta tarea se encarga de detectar Short presses o Long presses en el botón
@@ -1742,8 +1712,8 @@ process
 ; ==============================================================================
 ; ============================== Subrutina BCD-7Seg ============================
 ; ==============================================================================
-;   Esta subrutina se encarga de convertir los valores en las variables 
-;   BCD1 y BCD2, que ambas se encuentran en BCD, a formato de 7 segmentos. 
+;   Esta subrutina se encarga de convertir los valores en las variables
+;   BCD1 y BCD2, que ambas se encuentran en BCD, a formato de 7 segmentos.
 ;   La subrutina toma el BCD1 y coloca su MSB en Dsp1 y el LSB en Dsp2.
 ;   Para BCD2, coloca su MSB en Dsp3 y el LSB en Dsp4.
 
@@ -1751,21 +1721,21 @@ BCD_7Seg                        ; TODO: Optimizar esto en código               
                 ;Segment         dB $3F,$06,$5B,$4F,$66,$6D,$7D,$07,$7F,$6F,$40
                 ; aa = 99
                 ldx #Segment    ; Cargo la tabla con los valores en formato 7 segm
-                ldaa BCD1       
+                ldaa BCD1
                 psha            ; guardo BCD1
                 anda #$F0       ; tomo la parte alta
                 lsra
                 lsra
                 lsra
                 lsra            ; lo desplazo para que me quede a la derecha
-                ldab a,x        ; indexo por acumulador 
+                ldab a,x        ; indexo por acumulador
                 stab Dsp1       ; guardo las decenas BCD1 en Disp1
 
                 pula            ; cargo BCD1 en A
                 anda #$0F       ; tomo la parte baja
                 ldab a,x        ; indexo con el valor de la parte baja
                 stab Dsp2       ; unidades BCD1 en DISP2
-                ; se repite el procedimiento para BCD2. 
+                ; se repite el procedimiento para BCD2.
                 ldaa BCD2
                 psha
                 anda #$F0
@@ -1791,30 +1761,30 @@ BCD_7Seg                        ; TODO: Optimizar esto en código               
 ;   significativos del puerto A. Después, la subrutina detecta si alguno de los
 ;   bits menos significativos se hace 0. Si esto pasa, significa que se presionó
 ;   una tecla. Dependiendo del bit LSB que se hace 0, y dependiendo del valor
-;   actual de la máscara PATRON, se puede saber cuál fue la tecla presionada. 
+;   actual de la máscara PATRON, se puede saber cuál fue la tecla presionada.
 
 Leer_Teclado            movb #$EF,PATRON    ; Patrón inicia con un 0 en bit 4
                         ldx #Teclas         ; carga dirección de teclas
-loop_leer_teclado       movb PATRON,PORTA   
+loop_leer_teclado       movb PATRON,PORTA
                         ;clrb
                         nop
                         nop
                         nop
 ; si el bit 3 se hizo 0, significa que se presionó alguna tecla de la columna 3
                         brclr PORTA,$04,tcl_colu2
-; si el bit 2 se hizo 0, significa que se presionó alguna tecla de la columna 2 
+; si el bit 2 se hizo 0, significa que se presionó alguna tecla de la columna 2
                         brclr PORTA,$02,tcl_colu1
-; si el bit 1 ser hizo 0, se presionó de la columna 1       
+; si el bit 1 ser hizo 0, se presionó de la columna 1
                         brclr PORTA,$01,tcl_colu0
-; si el bit 0 se hizo 0, se presionó de la columna 0 
+; si el bit 0 se hizo 0, se presionó de la columna 0
                         orcc #$01       ; Fuerzo un 1 en el carry
-                        rol PATRON      ; para desplazar con 1s 
+                        rol PATRON      ; para desplazar con 1s
                         ldab PATRON     ; me fijo si el PATRON ya se llenó de 1s
                         cmpb #$FF       ; mientras no este lleno de 1s, salta
                         bne loop_leer_teclado   ; al loop de leer teclado
                         ldaa #$FF       ; TODO: ver esto
                         lbra exit_leer_teclado
-tcl_colu1       ; se llega a este branch si se presionó una tecla de la col1 
+tcl_colu1       ; se llega a este branch si se presionó una tecla de la col1
 
         brclr PORTA,$20,dig5  ; Si el patrón es 1101, se presionó la tecla 5
         brclr PORTA,$40,dig8  ; patrón 1011, presionó tecla 8
@@ -1838,7 +1808,7 @@ tcl_colu2       ; se llega a este branch si se presionó una tecla de col2
 
 
 
-;  En esta parte se implementa la lógica para colocar la tecla presionada 
+;  En esta parte se implementa la lógica para colocar la tecla presionada
 ;  en el valor de Tecla. Lo que se hace es cargar el valor de la Tecla - 1
 ;  en el acumulador A (digE tiene valor de 12, digB tiene el valor de 10)
 ;  y se indexa por acumulador A la lista de teclas que fue cargada en el
@@ -1961,7 +1931,7 @@ check_1s
 exit_checking
                ;bset CRGFLG,#$80 ; RTIF = 1
                ldd TCNT
-               addd #480
+               addd #Carga_TC5
                std TC5
                RTI
 
