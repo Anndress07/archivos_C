@@ -398,6 +398,91 @@ skipLCD
         jsr Tarea_DsplzLeds
         Bra Despachador_Tareas
 
+
+;******************************************************************************
+;                               TAREA LeerDS
+;******************************************************************************
+;   La tarea LeerDS lee los DIPSWITCHES y suprime los rebotes de estos.
+;   El valor sin suprimir se guarda en Temp_DS y el valor ya suprimido se
+;   carga en LeerDS.
+Tarea_LeerDS
+                ldx Est_Pres_LeerDS
+                jsr 0,x
+FinLeerDS       rts
+
+;============================ LeerDS ESTADO 1 =================================
+;   El primer estado carga el valor en el puerto H, y si es mayor a 0 carga el
+;   timer de supresión de rebotes y pasa al siguiente estado.
+TareaLeerDS_Est1
+
+                ldaa PTIH
+                cmpa Valor_DS
+                beq DS_ControlModo LeerDS_supr_reb
+
+                movb PTIH,Temp_DS
+                movw #TareaLeerDS_Est2,Est_Pres_LeerDS
+                movb #tTimerRebDS,TimerRebDS
+                bra retLeerDS_est1
+
+                                ; ------- Control de Modo
+
+DS_ControlModo  brset Valor_DS,$80,Dip7on
+                brset Valor_DS,$40,Dip6on
+                ; 0 0 -------------- TAREA MODO INACTIVA
+                jsr Tarea_ModoInactivo
+                bset LEDS,LDInac
+                bclr LEDS,LDConfig              ; apago leds de otras tareas
+                bclr LEDS,LDEnServ
+                movw #TareaServ_Est1,Est_Pres_TServ     ; reestablezco estados
+                movw #TareaConfig_Est1,Est_Pres_TConfig ; de los otros modos
+                bra retControlModo
+Dip6on          ; 0 1 -------------- TAREA CONFIGURAR
+                jsr Tarea_Configurar
+                bclr LEDS,LDInac
+                bset LEDS,LDConfig
+                bclr LEDS,LDEnServ
+                movw #TInac_Est1,Est_Pres_TInac
+                movw #TareaServ_Est1,Est_Pres_TServ
+                bra  retControlModo
+
+Dip7on          brset Valor_DS,$40,Dip7_6on
+                bra retControlModo
+
+Dip7_6on        ; 1 1 -------------- TAREA EN SERVICIO
+                jsr Tarea_EnServicio
+                bclr LEDS,LDInac
+                bclr LEDS,LDConfig
+                bset LEDS,LDEnServ
+                movw #TareaConfig_Est1,Est_Pres_TConfig
+                movw #TInac_Est1,Est_Pres_TInac
+
+retControlModo
+
+retLeerDS_est1  rts
+
+;============================ LeerDS ESTADO 2 =================================
+;   En el estado 2 se espera a que se acabe el timer de supresión de rebotes de
+;   10 ms. Una vez acabado el timer, se compara el valor actual de los DS con
+;   el valor almacenado en el estado 1; si son diferentes se asume que la
+;   señal estaba ruidosa y es descartada. Si los valores son iguales,
+;   se actualiza Valor_DS.
+TareaLeerDS_Est2
+
+                tst TimerRebDS
+                lbne retLeerDS_est2
+                ldab PTIH
+                cmpb Temp_DS
+                bne  noise_LeerDS
+                stab Valor_DS
+                ;movw #TareaLeerDS_Est1,Est_Pres_LeerDS
+
+noise_LeerDS
+                movw #TareaLeerDS_Est1,Est_Pres_LeerDS
+                ;bra retLeerDS_est2
+
+
+retLeerDS_est2  rts
+
 ;******************************************************************************
 ;                              TAREA ModoInactivo
 ;******************************************************************************
@@ -455,66 +540,79 @@ TInac_Est3
 ret_TInac_est3  bset DDRP,$03                   ; Habilitar 2 displays de la
                 bset PTP,$03                    ; derecha
                 rts
+
+
 ;******************************************************************************
-;                               TAREA DsplzLeds
+;                               TAREA MODO CONFIGURAR
 ;******************************************************************************
-;   Esta tarea se encarga de desplazar los cinco leds MSB de izquierda a derecha,
-;   un led a la vez. Utiliza la bandera DsplzIzquierda para saber si está
-;   recorriendo de izquiera a derecha o viceversa.
-Tarea_DsplzLeds
-                ldx Est_Pres_DsplzLeds
+;   CONFIGURAR corresponde al modo de RADAR623 donde se puede modificar la
+;   velocidad límite del radar. Esta tarea hace uso de la subrutina de
+;   Leer_Teclado que se encarga de leer las teclas del teclado matricial.
+;   y a su vez se ejecuta la Tarea Teclado que se encarga de conformar un
+;   arreglo de teclas válido.
+Tarea_Configurar
+                ldx Est_Pres_TConfig
                 jsr 0,x
        rts
 
-;============================ DsplzLeds ESTADO 1 ===============================
-;   En el primer estado inicializa los timers, la variable de DplzLeds y el
-;   próximo estado. DplzLeds contiene el patrón de LEDS.
-DsplzLeds_Est1
-                brclr Banderas_2,Alarma,retDsplzLeds_est1
-                movw #DsplzLeds_Est2,Est_Pres_DsplzLeds
-                movb #tTimerDplzLeds,TimerDplzLeds
-                movb #$80,DplzLeds
+;========================== CONFIGURAR ESTADO 1 ================================
+;   Se cargan los mensajes en LCD y se apagan los displays de 7 segmentos de
+;   más a la izquierda.
+;   Carga el valor de Vel_LIM, lo convierte de binario a bcd y lo pone en los
+;   displays de más a la derecha. También limpia el Num_Array por si hay valores
+;   no previstos.
+TareaConfig_Est1
+                ;bclr Banderas_2,SecondLine
+                movw #MSG_CONFIG2,Msg_L2
+                movw #MSG_CONFIG1,Msg_L1
+                bclr Banderas_2,LCD_OK
+
+                ;brset Banderas_2,LCD_OK,return_config_est1
 
 
-retDsplzLeds_est1
+
+                ldaa Vel_LIM
+                jsr Bin_BCD_MuxP
+                movb BCD,BCD2
+                bset DDRP,$03
+                bset PTP,$03
+                jsr BCD_7Seg
+                jsr Borrar_NumArray
+
+                movw #TareaConfig_Est2,Est_Pres_TConfig
+return_config_est1
                 rts
-;========================== DsplzLeds ESTADO 1 ================================
-;   En el estado 2 se comprueba el valor actual del patrón de LEDS. Si se
-;   determina que llegó al final de la respectiva orientación, cambia el valor
-;   de la bandera, para recorrer el patrón de la manera inversa.
-DsplzLeds_Est2
-                tst TimerDplzLeds
-                bne retDsplzLeds_est2
-                brset Banderas_2,DsplzIzquierda,IzqADerecha
-                ; desplazamiento derecha a izquierda
-                ldaa DplzLeds
-                cmpa #$80       ; Llegó al final de la izquierda?
-                beq cambiarAIzq
-                lsl DplzLeds    ; No llegó al final, desplazar a la izquierda
-                bra dplz2_join
-cambiarAIzq     ; llegó al final de la izquierda - cambiar a izq-derecha
-                bset Banderas_2,DsplzIzquierda
-                bra dplz2_join
-IzqADerecha
-                ldaa DplzLeds
-                cmpa #$08      ; llegó al final de la derecha?
-                beq cambiarADer
-                lsr DplzLeds    ; No llegó al final, desplazar a la derecha
-                bra dplz2_join
-cambiarADer     ; llegó al final de la izquierda - cambiar a der-izq
-                bclr Banderas_2,DsplzIzquierda
+;========================== CONFIGURAR ESTADO 2 ================================
+;   Cuando se detecta la bandera Array_Ok, se convierte el valor de Num_Array
+;   a binario y se compara con los valores de velocidades límites máximos
+;   y minimos para ver si es aceptable. Si se determina que se encuentra en el
+;   rango, se guarda el nuevo valor en Vel_LIM, y se pasa nuevamente al estado 1.
 
-dplz2_join      movb DplzLeds,LEDS ; se carga el valor a los LEDS
+TareaConfig_Est2
+                brclr Banderas_1,Array_OK,retConfig_est2
+                jsr BCD_BIN
+                cmpa #LimMin    ; 65 kmh
+                blo est2_conf_borrartcl
+                cmpa #LimMax    ; 90 kmh
+                bhi est2_conf_borrartcl
+                staa ValorLIM
+                jsr Bin_BCD_MuxP
+                movb BCD,BCD2
+                bset DDRP,$03
+                bset PTP,$03
+                jsr BCD_7Seg
+                movb ValorLIM,Vel_LIM
 
-                brset Banderas_2,Alarma,reloadLedTimer
-                movw #DsplzLeds_Est1,Est_Pres_DsplzLeds
-                bclr LEDS,$80
-                bra retDsplzLeds_est2
 
-reloadLedTimer  ; se recarga el timer si Alarma sigue activa
-                movb #tTimerDplzLeds,TimerDplzLeds
-retDsplzLeds_est2
+
+est2_conf_borrartcl
+                jsr Borrar_NumArray
+                bclr Banderas_1,Array_OK
+retConfig_est2  bset DDRP,$03
+                bset PTP,$03
                 rts
+
+
 ;******************************************************************************
 ;                               TAREA EnServicio
 ;******************************************************************************
@@ -687,232 +785,69 @@ TareaServ_Est6
 
                 movw #TareaServ_Est1,Est_Pres_TServ
 retEnServ_est6  rts
-;******************************************************************************
-;                               SUBRUTINA CALCULA
-;******************************************************************************
-;   CALCULA se encarga de calcular las variables necesarias para la tarea
-;   EnServicio del RADAR623.
-;   Recibe: El valor del timer TimerVel
-;   Entrega: las siguientes variables
-;           -DeltaT (diferencia de tiempos entre sensor 1 y 2, décimas de segundo)
-;           -Vel_Calc (Velocidad del vehículo en km/h)
-;           -TimerPant (tiempo que le toma estar a 100 metros de la pantalla,
-;                      (décimas de segundo)
-;           -TimerFinPant (tiempo que le toma alcanzar la pantalla)
-;   Las ecuaciones implementadas son las siguientes. El por qué de las mismas se
-;   detalla en el reporte de esta entrega.
-;
-;           DeltaT = 100 - TimerVel
-;
-;           Vel_Calc = 1440/DeltaT
-;
-;           TimerPant = 200/((Vel_Calc*10)/36)  = 200/(Vel_Calc/3.6)
-;
-;           TimerFinPant = 300/((Vel_Calc*10)/36)  = 300/(Vel_Calc/3.6)
-Calcula
-                ldaa #100
-                ldab TimerVel
-                sba
-                staa DeltaT ; DeltaT = 100 - TimerVel
 
-
-                tab
-                clra       ; muevo DeltaT a parte baja y limpio parte alta
-                xgdx       ; muevo DeltaT a X como divisor
-                ldd #1440  ; cargo dividiendo
-                idiv       ; Vel_Calc = 1440/DeltaT
-                xgdx       ; resultado desplazo a acumulador D
-                stab Vel_Calc       ; guardo parte baja como Vel_Calc
-
-                clra
-                ldab Vel_Calc
-                ldy #10
-                emul            ; Vel_Calc * 10
-                ldx #36
-                idiv            ; Vel_Calc * 10/36
-                pshx
-                ldd #200
-                idiv            ; TimerPant = 200/(Vel_Calc * 10/36)
-                xgdx            ; en segundos
-                ldy #10         ; lo multiplico por 10 para ser consistente
-                emul            ; con las unidades de TimerPant
-                stab TimerPant
-
-                pulx
-                ldd #300
-                idiv
-                xgdx        ; TimerPant = 300/(Vel_Calc * 10/36)
-                ldy #10     ; lo multiplico por 10 para ser consistente
-                emul        ; con las unidades de TimerPant
-                stab TimerFinPant
-
-                rts
 
 ;******************************************************************************
-;                               TAREA MODO CONFIGURAR
+;                               TAREA DsplzLeds
 ;******************************************************************************
-;   CONFIGURAR corresponde al modo de RADAR623 donde se puede modificar la
-;   velocidad límite del radar. Esta tarea hace uso de la subrutina de
-;   Leer_Teclado que se encarga de leer las teclas del teclado matricial.
-;   y a su vez se ejecuta la Tarea Teclado que se encarga de conformar un
-;   arreglo de teclas válido.
-Tarea_Configurar
-                ldx Est_Pres_TConfig
+;   Esta tarea se encarga de desplazar los cinco leds MSB de izquierda a derecha,
+;   un led a la vez. Utiliza la bandera DsplzIzquierda para saber si está
+;   recorriendo de izquiera a derecha o viceversa.
+Tarea_DsplzLeds
+                ldx Est_Pres_DsplzLeds
                 jsr 0,x
        rts
 
-;========================== CONFIGURAR ESTADO 1 ================================
-;   Se cargan los mensajes en LCD y se apagan los displays de 7 segmentos de
-;   más a la izquierda.
-;   Carga el valor de Vel_LIM, lo convierte de binario a bcd y lo pone en los
-;   displays de más a la derecha. También limpia el Num_Array por si hay valores
-;   no previstos.
-TareaConfig_Est1
-                ;bclr Banderas_2,SecondLine
-                movw #MSG_CONFIG2,Msg_L2
-                movw #MSG_CONFIG1,Msg_L1
-                bclr Banderas_2,LCD_OK
-
-                ;brset Banderas_2,LCD_OK,return_config_est1
+;============================ DsplzLeds ESTADO 1 ===============================
+;   En el primer estado inicializa los timers, la variable de DplzLeds y el
+;   próximo estado. DplzLeds contiene el patrón de LEDS.
+DsplzLeds_Est1
+                brclr Banderas_2,Alarma,retDsplzLeds_est1
+                movw #DsplzLeds_Est2,Est_Pres_DsplzLeds
+                movb #tTimerDplzLeds,TimerDplzLeds
+                movb #$80,DplzLeds
 
 
-
-                ldaa Vel_LIM
-                jsr Bin_BCD_MuxP
-                movb BCD,BCD2
-                bset DDRP,$03
-                bset PTP,$03
-                jsr BCD_7Seg
-                jsr Borrar_NumArray
-
-                movw #TareaConfig_Est2,Est_Pres_TConfig
-return_config_est1
+retDsplzLeds_est1
                 rts
-;========================== CONFIGURAR ESTADO 2 ================================
-;   Cuando se detecta la bandera Array_Ok, se convierte el valor de Num_Array
-;   a binario y se compara con los valores de velocidades límites máximos
-;   y minimos para ver si es aceptable. Si se determina que se encuentra en el
-;   rango, se guarda el nuevo valor en Vel_LIM, y se pasa nuevamente al estado 1.
+;========================== DsplzLeds ESTADO 1 ================================
+;   En el estado 2 se comprueba el valor actual del patrón de LEDS. Si se
+;   determina que llegó al final de la respectiva orientación, cambia el valor
+;   de la bandera, para recorrer el patrón de la manera inversa.
+DsplzLeds_Est2
+                tst TimerDplzLeds
+                bne retDsplzLeds_est2
+                brset Banderas_2,DsplzIzquierda,IzqADerecha
+                ; desplazamiento derecha a izquierda
+                ldaa DplzLeds
+                cmpa #$80       ; Llegó al final de la izquierda?
+                beq cambiarAIzq
+                lsl DplzLeds    ; No llegó al final, desplazar a la izquierda
+                bra dplz2_join
+cambiarAIzq     ; llegó al final de la izquierda - cambiar a izq-derecha
+                bset Banderas_2,DsplzIzquierda
+                bra dplz2_join
+IzqADerecha
+                ldaa DplzLeds
+                cmpa #$08      ; llegó al final de la derecha?
+                beq cambiarADer
+                lsr DplzLeds    ; No llegó al final, desplazar a la derecha
+                bra dplz2_join
+cambiarADer     ; llegó al final de la izquierda - cambiar a der-izq
+                bclr Banderas_2,DsplzIzquierda
 
-TareaConfig_Est2
-                brclr Banderas_1,Array_OK,retConfig_est2
-                jsr BCD_BIN
-                cmpa #LimMin    ; 65 kmh
-                blo est2_conf_borrartcl
-                cmpa #LimMax    ; 90 kmh
-                bhi est2_conf_borrartcl
-                staa ValorLIM
-                jsr Bin_BCD_MuxP
-                movb BCD,BCD2
-                bset DDRP,$03
-                bset PTP,$03
-                jsr BCD_7Seg
-                movb ValorLIM,Vel_LIM
+dplz2_join      movb DplzLeds,LEDS ; se carga el valor a los LEDS
 
+                brset Banderas_2,Alarma,reloadLedTimer
+                movw #DsplzLeds_Est1,Est_Pres_DsplzLeds
+                bclr LEDS,$80
+                bra retDsplzLeds_est2
 
-
-est2_conf_borrartcl
-                jsr Borrar_NumArray
-                bclr Banderas_1,Array_OK
-retConfig_est2  bset DDRP,$03
-                bset PTP,$03
+reloadLedTimer  ; se recarga el timer si Alarma sigue activa
+                movb #tTimerDplzLeds,TimerDplzLeds
+retDsplzLeds_est2
                 rts
 
-;******************************************************************************
-;                               Subrutina Control Modo
-;******************************************************************************
-;   Se encarga de seleccionar el modo de operación según los valores de los DIP
-;   Switches 7 y 6. Si ambos DS están inactivos se selecciona el modo INACTIVO.
-;   Si el DS 7 está inactivo y el 6 activo está en el modo CONFIGURAR. Si ambos
-;   DS están activos se encuentra en el modo EN SERVICIO.
-;   Además, esta tarea se encarga de reestablecer los estados iniciales en los
-;   demás modos de operación.
-
-
-
-;******************************************************************************
-;                               TAREA LeerDS
-;******************************************************************************
-;   La tarea LeerDS lee los DIPSWITCHES y suprime los rebotes de estos.
-;   El valor sin suprimir se guarda en Temp_DS y el valor ya suprimido se
-;   carga en LeerDS.
-Tarea_LeerDS
-                ldx Est_Pres_LeerDS
-                jsr 0,x
-FinLeerDS       rts
-
-;============================ LeerDS ESTADO 1 =================================
-;   El primer estado carga el valor en el puerto H, y si es mayor a 0 carga el
-;   timer de supresión de rebotes y pasa al siguiente estado.
-TareaLeerDS_Est1
-
-                ldaa PTIH
-                cmpa Valor_DS
-                beq DS_ControlModo LeerDS_supr_reb
-
-                movb PTIH,Temp_DS
-                movw #TareaLeerDS_Est2,Est_Pres_LeerDS
-                movb #tTimerRebDS,TimerRebDS
-                bra retLeerDS_est1
-
-                                ; ------- Control de Modo
-
-DS_ControlModo  brset Valor_DS,$80,Dip7on
-                brset Valor_DS,$40,Dip6on
-                ; 0 0 -------------- TAREA MODO INACTIVA
-                jsr Tarea_ModoInactivo
-                bset LEDS,LDInac
-                bclr LEDS,LDConfig              ; apago leds de otras tareas
-                bclr LEDS,LDEnServ
-                movw #TareaServ_Est1,Est_Pres_TServ     ; reestablezco estados
-                movw #TareaConfig_Est1,Est_Pres_TConfig ; de los otros modos
-                bra retControlModo
-Dip6on          ; 0 1 -------------- TAREA CONFIGURAR
-                jsr Tarea_Configurar
-                bclr LEDS,LDInac
-                bset LEDS,LDConfig
-                bclr LEDS,LDEnServ
-                movw #TInac_Est1,Est_Pres_TInac
-                movw #TareaServ_Est1,Est_Pres_TServ
-                bra  retControlModo
-
-Dip7on          brset Valor_DS,$40,Dip7_6on
-                bra retControlModo
-
-Dip7_6on        ; 1 1 -------------- TAREA EN SERVICIO
-                jsr Tarea_EnServicio
-                bclr LEDS,LDInac
-                bclr LEDS,LDConfig
-                bset LEDS,LDEnServ
-                movw #TareaConfig_Est1,Est_Pres_TConfig
-                movw #TInac_Est1,Est_Pres_TInac
-
-retControlModo
-
-retLeerDS_est1  rts
-
-;============================ LeerDS ESTADO 2 =================================
-;   En el estado 2 se espera a que se acabe el timer de supresión de rebotes de
-;   10 ms. Una vez acabado el timer, se compara el valor actual de los DS con
-;   el valor almacenado en el estado 1; si son diferentes se asume que la
-;   señal estaba ruidosa y es descartada. Si los valores son iguales,
-;   se actualiza Valor_DS.
-TareaLeerDS_Est2
-
-                tst TimerRebDS
-                lbne retLeerDS_est2
-                ldab PTIH
-                cmpb Temp_DS
-                bne  noise_LeerDS
-                stab Valor_DS
-                movw #TareaLeerDS_Est1,Est_Pres_LeerDS
-
-noise_LeerDS
-                movw #TareaLeerDS_Est1,Est_Pres_LeerDS
-                bra retLeerDS_est2
-
-
-retLeerDS_est2  rts
 ;******************************************************************************
 ;                               TAREA BRILLO
 ;******************************************************************************
@@ -995,53 +930,432 @@ TareaBrillo_Est3
 
 ret_brillo_est3 rts
 
+;******************************************************************************
+;                               TAREA TECLADO
+;******************************************************************************
+;   La tarea TECLADO se encarga de conformar un arreglo de teclas válido en
+;   Num_Array. Para esto, hace uso de la subrutina Leer_Teclado. Primeramente
+;   se hace una supresión de rebotes de las teclas, cuando la tecla se suelta
+;   se guarda en Num_Array, teniendo unas consideraciones que se ven en el
+;   estado 4.
+Tarea_Teclado
+                        ldx Est_Pres_TCL
+                        jsr 0,x
+FinTareaTCL             rts
+;========================== TAREA_TECLADO ESTADO 1 =============================
+;    Se llama a Leer_Teclado para ver qué tecla fue presionada. Si es igual A
+;    $FF significa que ninguna tecla fue presionada. Cuando detecta que una
+;    tecla si fue presionada, carga el timer de supresión de rebotes y cambia
+;    al estado 2.
+TareaTCL_Est1
+                        ;movb #$FF,Tecla
+                        ;movb #$F5,Tecla_IN
+                        jsr Leer_Teclado
+                        staa Tecla
+                        cmpa #$FF
+                        beq ret_Teclado
+                        ;movb Tecla,Tecla_IN
+                        Movb #tSuprRebTCL,Timer_RebTCL
+                        movw #TareaTCL_Est2,Est_Pres_TCL
+ret_Teclado             rts
+
+;========================== TAREA_TECLADO ESTADO 2 =============================
+;   En el estado 2, si se acabo el timer de supresión de rebotes, se comparan
+;   Tecla y Tecla_IN, si son iguales se procede con la máquina de estados
+;   pasando al estado 3. Si no son iguales, significa que hubo ruido y se
+;   regresa al estado 1.
+TareaTCL_Est2           tst Timer_RebTCL
+                        bne ret_Teclado_est2
+                        jsr Leer_Teclado
+                        staa Tecla_IN
+                        ldaa Tecla
+                        cmpa Tecla_IN
+                        bne est2_Teclado_prox1
+                        movw #TareaTCL_Est3,Est_Pres_TCL
+                        bra ret_Teclado_est2
+est2_Teclado_prox1      movw #TareaTCL_Est1,Est_Pres_TCL
+
+
+ret_Teclado_est2        rts
+;========================== TAREA_TECLADO ESTADO 3 =============================
+;   En el estado 3 se espera a que el usuario libere la tecla para que se pueda
+;   seguir hacia el estado 4 y que la tecla pueda ser procesada debidamente.
+TareaTCL_Est3
+                        jsr Leer_Teclado
+                        brset PORTA,$0F,Tecla_Liberada ; se liberaron las teclas?
+                        bra ret_Teclado_est3
+
+Tecla_Liberada          movw #TareaTCL_Est4,Est_Pres_TCL
+ret_Teclado_est3        rts
+;========================== TAREA_TECLADO ESTADO 4 =============================
+;   En el estado 4 se conforma Num_Array con ciertas consideraciones.
+;   Primeramente, si Num_Array está lleno, las únicas válidas a recibir pueden ser
+;   E (enviar) o B (borrar). Si Num_Array está vacío, puede recibir cualquier
+;   tecla menos enviar o borrar.
+;   Para desplazarse por Num_Array, se usa direccionamiento indexado por
+;   acumulador y el offset es guardado en la variable Cont_TCL.
+TareaTCL_Est4
+                        ldx #Num_Array
+                        ldaa MAX_TCL
+                        deca
+                        ldab a,x
+                        cmpb #$FF ; se verifica si la última posición
+                        ; está vacía
+                        bne LongMaximaAlcanzada
+                        ; no se ha llenado el array
+                        ; se verifica si está vacío
+                        clra
+                        ldab a,x
+                        cmpb #$FF
+
+                        bne NoEsPrimeraTecla
+                        ; sí es la primera tecla
+                        ; sí está vacío
+                        ldab Tecla
+                        ; si es igual a enter o borrar,
+                        ; se descarta
+                        cmpb #$0B
+                        beq exit_tcl_est4
+                        cmpb #$0E
+                        beq exit_tcl_est4
+                        ldaa Cont_TCL
+                        ldab Tecla
+                        stab a,x
+                        inc Cont_TCL
+                        ; guardar tecla en Num_Array e incrementar
+                        ; Cont_TCL
+                        bra exit_tcl_est4
+; no se encuentra vacío
+NoEsPrimeraTecla
+                        ldab Tecla
+                        cmpb #$0B
+                        beq NoPrimera_EsBorrar
+                        cmpb #$0E
+                        beq NoPrimera_EsEnter
+                        ldaa Cont_TCL
+                        ldab Tecla
+                        stab a,x
+                        inc Cont_TCL
+                        ; guardar la tecla, incrementar Offset
+                        bra exit_tcl_est4
+NoPrimera_EsEnter       ; tecla valida, se borra offset y se pone
+                        ; la bandera Array_OK
+                        clr Cont_TCL
+                        bset Banderas_1,Array_OK
+                        bra exit_tcl_est4
+NoPrimera_EsBorrar      ; se borra la última tecla
+                        ; decrementar offset
+                        ldaa Cont_TCL
+                        beq exit_tcl_est4
+                        ldab #$FF
+                        stab a,x
+                        dec Cont_TCL
+                        bra exit_tcl_est4
+LongMaximaAlcanzada     ; el array sí está lleno, solo recibir E o B
+                        ldab Tecla
+                        cmpb #$0B
+                        beq UltimaTecla_EsBorrar
+                        cmpb #$0E
+                        beq UltimaTecla_EsEnter
+                        bra exit_tcl_est4
+
+UltimaTecla_EsBorrar    ; borrar última, dec offset
+                        ldab #$FF
+                        stab a,x
+                        dec Cont_TCL
+                        bra exit_tcl_est4
+UltimaTecla_EsEnter     ; borrar offset, levantar Array_OK
+                        clr Cont_TCL
+                        bset Banderas_1,Array_OK
+                        bra exit_tcl_est4
+
+exit_tcl_est4           ; borro el valor de la tecla, regreso a est1
+                        movb #$FF,Tecla
+                        movw #TareaTCL_Est1,Est_Pres_TCL
+
+; ---------------------------------------------------------
 
 ;******************************************************************************
-;                               Rutina InitLCD
+;                               TAREA LED TESTIGO
 ;******************************************************************************
-;   Esta rutina se encarga de inicializar la pantalla LCD. Esta rutina se ejecuta
-;   únicamente al inicio del código y su trabajo es limpiar la pantalla y dejarla
-;   lista para recibir mensajes.
-Rutina_InitLCD
-                        movw #tTimer260uS,Timer260uS
-                        movw #tTimer40uS,Timer40uS
-                        movb #tTimer2mS,Timer2mS        ; inicializo timers
-                        movb #$FF,DDRK          ; pongo como salida Puerto K
-                        clr Punt_LCD            ; limpiar puntero
-                        bclr Banderas_2,RS      ; se van a mandar comandos
-                        bclr Banderas_2,SecondLine
-                        bset Banderas_2,LCD_OK
+;   La tarea LED Testigo se encarga de cambiar el led RGB cada 500 ms. Esto se
+;   hace encendiendo o apagando los bits 6-4 del puerto P.
 
-                        ldy #IniDsp    ; se carga dirección de lista de comandos
-loop_within_InitLCD
-                        ldaa 1,y+
-                        staa CharLCD    ; cargo en CharLCD un comando
+Tarea_Led_Testigo
+                Tst Timer_LED_Testigo
+                Bne FinLedTest
+                Movb #tTimerLDTst,Timer_LED_Testigo ; recargar timer Led testig
+                brset PTP,$10,led1_on ; led azul encendido?
+                brset PTP,$20,led2_on ; led rojo encendido?
 
-                        cmpa #EOB
-                        bne not_eob
+                bclr PTP,$40    ; apagar led verde
+                bset PTP,$10    ; encender led azul
+                bra FinLedTest
+led1_on
+                bclr PTP,$10    ; apagar led azul
+                bset PTP,$20    ; encender led rojo
+                bra FinLedTest
+led2_on
+                bclr PTP,$20    ; apagar led rojo
+                bset PTP,$40    ; encender led verde
 
-                        ; si es EOB
-                        movb #Clear_LCD,CharLCD ; si se llegó al final, enviar
-                        nop                     ; comando CLEAR
-loop_for_clear          jsr Tarea_SendLCD       ; enviar elemento al LCD
-                        brset Banderas_2,FinSendLCD,endedClear ; esperar a que
-                        bra loop_for_clear                     ; termine
-
-endedClear              movb #tTimer2mS,Timer2mS  ; esperar 2ms para que se
-wait_for_clear          tst Timer2mS              ; limpie la pantalla
-                        bne wait_for_clear
-                        bra exit_InitLCD
-
-not_eob                 jsr Tarea_SendLCD
-
-                        brset Banderas_2,FinSendLCD,clearFinSendLCD
-                        bra not_eob
-clearFinSendLCD
-                        bclr Banderas_2,FinSendLCD
-                        bra loop_within_InitLCD
+FinLedTest
+      Rts
 
 
-exit_InitLCD            rts
+;******************************************************************************
+;                               TAREA LEER_PB0
+;******************************************************************************
+;   Esta tarea se encarga de detectar Short presses o Long presses en el botón
+;   PB0 (PH0) y es utilizada en el RADAR 623 como el segundo sensor ultrasónico.
+Tarea_LeerPB0
+                ldx Est_Pres_LeerPB0
+                jsr 0,x
+FinTareaPB0      rts
+
+;============================= LEER_PB0 ESTADO 1 ================================
+;   Si se detecta que el botón fue presionado, se carga el timer de supresión de
+;   rebotes (10 ms) y los timers de ShortPress y LongPress. Se pasa al estado 2.
+
+LeerPB0_Est1    brset PortPB,MaskPB0,ret_LeerPB0_Est1
+                movb #tSupRebPB0,Timer_RebPB0
+                movb #tShortP0,Timer_SHP0
+                movb #tLongP0,Timer_LP0
+                movw #LeerPB0_Est2,Est_Pres_LeerPB0
+
+ret_LeerPB0_Est1  rts
+;============================= LEER_PB0 ESTADO 2 ================================
+;   En el estado 2, si se terminó el timer de supresión de rebotes, se vuelve a
+;   leer el valor del botón. Si se detecta que no está presionado, se asume que
+;   fue ruido y es descartado y se regresa al estado 1. Si no es ruido, se pasa
+;   al estado 3 donde se espera a que se acabe el timer de ShortPress.
+LeerPB0_Est2
+                tst Timer_RebPB0
+                bne ret_LeerPB0_Est2
+                brset PortPB,MaskPB0,est2_prox_est1_pb0
+                movw #LeerPB0_Est3,Est_Pres_LeerPB0
+                bra ret_LeerPB0_Est2
+
+est2_prox_est1_pb0      movw #LeerPB0_Est1,Est_Pres_LeerPB0
+
+ret_LeerPB0_Est2 rts
+;============================= LEER_PB ESTADO 3 ================================
+;   Si se acaba el timer de short press y se dejó de presionar el botón, se alza
+;   la bandera de ShortP1 y se regresa al estado 1. Si resulta que no se ha
+;   soltado el botón, se pasa al estado 4.
+LeerPB0_Est3
+                tst Timer_SHP0
+                bne ret_LeerPB0_Est3
+                brset PortPB,MaskPB0,est3_pb0_est1
+
+                movw #LeerPB0_Est4,Est_Pres_LeerPB0
+                bra ret_LeerPB0_Est3
+
+est3_pb0_est1   bset Banderas_1,ShortP0
+                movw #LeerPB0_Est1,Est_Pres_LeerPB0
+
+ret_LeerPB0_Est3 rts
+
+;============================= LEER_PB ESTADO 4 ================================
+;   En el estado 4 se espera a que se acabe el timer de Long Press para
+;   colocar la bandera de LongP0 en Banderas_1. Después de esto, se pasa regresa
+;   estado 1.
+LeerPB0_Est4
+                tst Timer_LP0
+                bne tst_shortp0
+                ; Si el PC llega aca, es que verifica LP
+                brclr PortPB,MaskPB0,ret_LeerPB0_Est4
+                nop
+                bset  Banderas_1,LongP0
+
+                nop
+                bra leerpb0_prox_est1
+
+
+tst_shortp0    brclr PortPB,MaskPB0,ret_LeerPB0_Est4
+              bset  Banderas_1,ShortP0
+
+
+leerpb0_prox_est1  movw #LeerPB0_Est1,Est_Pres_LeerPB0
+ret_LeerPB0_Est4 rts
+
+
+;******************************************************************************
+;                               TAREA LEER_PB1
+;******************************************************************************
+;   La tarea LEER_PB1 es análoga a la de LEER_PB0, solo con algunos cambios en
+;   los nombres de los timers y variables utilizadas (P0 pasa a ser P1)
+;   por lo tanto, no será comentada.
+Tarea_LeerPB1
+                ldx Est_Pres_LeerPB1
+                jsr 0,x
+FinTareaPB1      rts
+
+;============================= LEER_PB ESTADO 1 ================================
+LeerPB1_Est1     brset PortPB,MaskPB1,ret_LeerPB1_Est1
+                movb #tSupRebPB1,Timer_RebPB1
+                movb #tShortP1,Timer_SHP1
+                movb #tLongP1,Timer_LP1
+                movw #LeerPB1_Est2,Est_Pres_LeerPB1
+
+ret_LeerPB1_Est1  rts
+;============================= LEER_PB ESTADO 2 ================================
+LeerPB1_Est2
+                tst Timer_RebPB1
+                bne ret_LeerPB1_Est2
+                brset PortPB,MaskPB1,est2_pb1_est1
+                movw #LeerPB1_Est3,Est_Pres_LeerPB1
+                bra ret_LeerPB1_Est2
+
+est2_pb1_est1      movw #LeerPB1_Est1,Est_Pres_LeerPB1
+
+ret_LeerPB1_Est2 rts
+;============================= LEER_PB ESTADO 3 ================================
+LeerPB1_Est3
+                tst Timer_SHP1
+                bne ret_LeerPB1_Est3
+                brset PortPB,MaskPB1,est3_pb1_est1
+
+                movw #LeerPB1_Est4,Est_Pres_LeerPB1
+                bra ret_LeerPB1_Est3
+
+est3_pb1_est1   bset Banderas_1,ShortP1
+                ;bset Banderas,ShortP1
+                movw #LeerPB1_Est1,Est_Pres_LeerPB1
+
+ret_LeerPB1_Est3 rts
+
+;============================= LEER_PB ESTADO 4 ================================
+LeerPB1_Est4
+                tst Timer_LP1
+                bne tst_shortp1
+                ; Si el PC llega aca, es que verifica LP
+                brclr PortPB,MaskPB1,ret_LeerPB1_Est4
+                nop
+                bset  Banderas_1,LongP1
+                ;bset Banderas,LongP
+                nop
+                bra est4_pb1_est1
+
+
+tst_shortp1    brclr PortPB,MaskPB1,ret_LeerPB1_Est4
+              bset  Banderas_1,ShortP1
+              ;bset Banderas,ShortP
+
+est4_pb1_est1  movw #LeerPB1_Est1,Est_Pres_LeerPB1
+ret_LeerPB1_Est4 rts
+
+;******************************************************************************
+;                               TAREA MUX_PANTALLA
+;******************************************************************************
+;   Esta tarea se encarga de colocar valores en las pantallas multiplexadas de
+;   7 segmentos y en los LEDS del puerto B.
+;   Dependiendo de la variable Cont_Dig, se le asigna un turno a cada display
+;   de colocar su respectivo valor en la pantalla. Todos los números acceden la
+;   información por el puerto B, por lo que es necesario realizar la
+;   multiplexación.
+;   Esta tarea utiliza también las variables Dsp1, Dsp2, Dsp3, Dsp4, las que
+;   contienen los valores a colocar en cada respectivo display de 7 segmentos.
+Tarea_Mux_Pantalla
+
+                ldx EstPres_PantallaMUX
+                jsr 0,x
+FinTareaPMUX    rts
+
+;=========================== MUX_PANTALLA ESTADO 1 =============================
+;  En el estado 1 se realiza la multiplexación de las pantallas y los LEDS. Esto
+;  ocurre cada 100 ms, por lo que cada display y los leds tienen un tiempo de 100
+;  ms cada uno. Si Cont_Dig == 1, significa que enciende el display de más a la
+;  izquierda, si Cont_Dig == 2 el siguiente, y así sucesivamente. Si Cont_Dig
+;  es mayor a 4, significa que es turno de los LEDS de encenderse. De esta manera
+;  solo hay un elemento activo en todo momento.
+TareaMuxPantalla_Est1
+                        tst Timer_Digito        ; se acabo timer de 100 ms?
+                        lbne ret_pmux_est1
+                        movb #tTimerDigito,Timer_Digito
+                        ldaa Cont_Dig
+                        cmpa #1
+                        beq goDig1      ; if Cont_Dig == 1, encender 1ero
+                        cmpa #2
+                        beq goDig2      ; if Cont_Dig == 2, encender 2do
+                        cmpa #3
+                        beq goDig3      ; if Cont_Dig == 3, encender 3ro
+                        cmpa #4
+                        beq goDig4      ; if Cont_Dig == 4, encender 4to
+                                        ; if Cont_Dig > 4, encender LEDS
+                        bclr PTJ,$02    ; apago cátodo LEDS (leds on)
+                        movb LEDS,PORTB ; coloca valor de LEDS en PORTB
+                        movb #1,Cont_Dig        ; reestablezco el valor de
+                                                ; Cont_Dig
+
+                        bset PTP,$0F            ; Apago 7 segmentos
+                        bra pmux_prox_est2
+
+
+
+
+goDig1                  ;movb #$0E,PTP
+                        bset PTP,$0E  ; Se escribe $E en parte baja
+                        bclr PTP,$01  ; Encender Dsp1
+                        ;bclr PTP,$01
+                        movb Dsp1,PORTB ; cargar datos para Dsp1
+                        inc Cont_Dig    ; siguiente digito
+                        bra pmux_prox_est2
+goDig2
+                         ;movb #$0D,PTP
+                        ;movb PTP,$0D
+                        bset PTP,$0D  ; Se escribe $E en parte baja
+                       ;bclr PTP,$B2  ; Encender Dsp2
+                        bclr PTP,$02
+                        movb Dsp2,PORTB
+                        inc Cont_Dig
+                        bra pmux_prox_est2
+goDig3
+                        ;movb #$0B,PTP
+                        bset PTP,$0B  ; Se escribe $B en parte baja
+                        bclr PTP,$04  ; Encender Dsp3
+                        ;bclr PTP,$04
+                        movb Dsp3,PORTB
+                        inc Cont_Dig
+                        bra pmux_prox_est2
+goDig4
+                         ;movb #$07,PTP
+                        bset PTP,$07  ; Se escribe $7 en parte baja
+                        ;bclr PTP,$B8  ; Encender Dsp4
+                        bclr PTP,$08
+                        movb Dsp4,PORTB
+                        inc Cont_Dig
+
+
+
+pmux_prox_est2
+                        movw #TareaMuxPantalla_Est2,EstPres_PantallaMUX
+                        ; Cargar contador de Ticks para el brillo
+                        movw #100,Counter_Ticks
+
+ret_pmux_est1           rts
+
+;=========================== MUX_PANTALLA ESTADO 2 =============================
+;   En el estado 2 se implementa la funcionalidad del ajuste de brillo.
+;   Ya que el brillo es una variable entre 0 y 100, y depende de la cantidad de
+;   tiempo que el display está encendido (Counter_Ticks), se le resta
+;   Counter_Ticks a un valor de 100. Si este es igual al brillo, se dice que
+;   el display o los botones estuvieron encendidos por la cantidad de tiempo
+;   necesaria para el brillo deseado, y se regresa al estado 1.
+TareaMuxPantalla_Est2
+                        ldd #100
+                        subd Counter_Ticks
+
+                        cmpb Brillo
+                        blo ret_pmux_est2
+                        ; apago 7 segmentos y los LEDS
+                        bset PTP,$0F
+                        bset PTJ,$02
+                        movb #$00,PORTB
+                        ;bset PTP,$BF
+                        movw #TareaMuxPantalla_Est1,EstPres_PantallaMUX
+
+ret_pmux_est2           rts
 
 ;******************************************************************************
 ;                               TAREA LCD
@@ -1197,143 +1511,6 @@ ret_SendLCD_est4        rts
 
 
 ;******************************************************************************
-;                               TAREA MUX_PANTALLA
-;******************************************************************************
-;   Esta tarea se encarga de colocar valores en las pantallas multiplexadas de
-;   7 segmentos y en los LEDS del puerto B.
-;   Dependiendo de la variable Cont_Dig, se le asigna un turno a cada display
-;   de colocar su respectivo valor en la pantalla. Todos los números acceden la
-;   información por el puerto B, por lo que es necesario realizar la
-;   multiplexación.
-;   Esta tarea utiliza también las variables Dsp1, Dsp2, Dsp3, Dsp4, las que
-;   contienen los valores a colocar en cada respectivo display de 7 segmentos.
-Tarea_Mux_Pantalla
-
-                ldx EstPres_PantallaMUX
-                jsr 0,x
-FinTareaPMUX    rts
-
-;=========================== MUX_PANTALLA ESTADO 1 =============================
-;  En el estado 1 se realiza la multiplexación de las pantallas y los LEDS. Esto
-;  ocurre cada 100 ms, por lo que cada display y los leds tienen un tiempo de 100
-;  ms cada uno. Si Cont_Dig == 1, significa que enciende el display de más a la
-;  izquierda, si Cont_Dig == 2 el siguiente, y así sucesivamente. Si Cont_Dig
-;  es mayor a 4, significa que es turno de los LEDS de encenderse. De esta manera
-;  solo hay un elemento activo en todo momento.
-TareaMuxPantalla_Est1
-                        tst Timer_Digito        ; se acabo timer de 100 ms?
-                        lbne ret_pmux_est1
-                        movb #tTimerDigito,Timer_Digito
-                        ldaa Cont_Dig
-                        cmpa #1
-                        beq goDig1      ; if Cont_Dig == 1, encender 1ero
-                        cmpa #2
-                        beq goDig2      ; if Cont_Dig == 2, encender 2do
-                        cmpa #3
-                        beq goDig3      ; if Cont_Dig == 3, encender 3ro
-                        cmpa #4
-                        beq goDig4      ; if Cont_Dig == 4, encender 4to
-                                        ; if Cont_Dig > 4, encender LEDS
-                        bclr PTJ,$02    ; apago cátodo LEDS (leds on)
-                        movb LEDS,PORTB ; coloca valor de LEDS en PORTB
-                        movb #1,Cont_Dig        ; reestablezco el valor de
-                                                ; Cont_Dig
-
-                        bset PTP,$0F            ; Apago 7 segmentos
-                        bra pmux_prox_est2
-
-
-
-
-goDig1                  ;movb #$0E,PTP
-                        bset PTP,$0E  ; Se escribe $E en parte baja
-                        bclr PTP,$01  ; Encender Dsp1
-                        ;bclr PTP,$01
-                        movb Dsp1,PORTB ; cargar datos para Dsp1
-                        inc Cont_Dig    ; siguiente digito
-                        bra pmux_prox_est2
-goDig2
-                         ;movb #$0D,PTP
-                        ;movb PTP,$0D
-                        bset PTP,$0D  ; Se escribe $E en parte baja
-                       ;bclr PTP,$B2  ; Encender Dsp2
-                        bclr PTP,$02
-                        movb Dsp2,PORTB
-                        inc Cont_Dig
-                        bra pmux_prox_est2
-goDig3
-                        ;movb #$0B,PTP
-                        bset PTP,$0B  ; Se escribe $B en parte baja
-                        bclr PTP,$04  ; Encender Dsp3
-                        ;bclr PTP,$04
-                        movb Dsp3,PORTB
-                        inc Cont_Dig
-                        bra pmux_prox_est2
-goDig4
-                         ;movb #$07,PTP
-                        bset PTP,$07  ; Se escribe $7 en parte baja
-                        ;bclr PTP,$B8  ; Encender Dsp4
-                        bclr PTP,$08
-                        movb Dsp4,PORTB
-                        inc Cont_Dig
-
-
-
-pmux_prox_est2
-                        movw #TareaMuxPantalla_Est2,EstPres_PantallaMUX
-                        ; Cargar contador de Ticks para el brillo
-                        movw #100,Counter_Ticks
-
-ret_pmux_est1           rts
-
-;=========================== MUX_PANTALLA ESTADO 2 =============================
-;   En el estado 2 se implementa la funcionalidad del ajuste de brillo.
-;   Ya que el brillo es una variable entre 0 y 100, y depende de la cantidad de
-;   tiempo que el display está encendido (Counter_Ticks), se le resta
-;   Counter_Ticks a un valor de 100. Si este es igual al brillo, se dice que
-;   el display o los botones estuvieron encendidos por la cantidad de tiempo
-;   necesaria para el brillo deseado, y se regresa al estado 1.
-TareaMuxPantalla_Est2
-                        ldd #100
-                        subd Counter_Ticks
-
-                        cmpb Brillo
-                        blo ret_pmux_est2
-                        ; apago 7 segmentos y los LEDS
-                        bset PTP,$0F
-                        bset PTJ,$02
-                        movb #$00,PORTB
-                        ;bset PTP,$BF
-                        movw #TareaMuxPantalla_Est1,EstPres_PantallaMUX
-
-ret_pmux_est2           rts
-;******************************************************************************
-;                               TAREA LED TESTIGO
-;******************************************************************************
-;   La tarea LED Testigo se encarga de cambiar el led RGB cada 500 ms. Esto se
-;   hace encendiendo o apagando los bits 6-4 del puerto P.
-
-Tarea_Led_Testigo
-                Tst Timer_LED_Testigo
-                Bne FinLedTest
-                Movb #tTimerLDTst,Timer_LED_Testigo ; recargar timer Led testig
-                brset PTP,$10,led1_on ; led azul encendido?
-                brset PTP,$20,led2_on ; led rojo encendido?
-
-                bclr PTP,$40    ; apagar led verde
-                bset PTP,$10    ; encender led azul
-                bra FinLedTest
-led1_on
-                bclr PTP,$10    ; apagar led azul
-                bset PTP,$20    ; encender led rojo
-                bra FinLedTest
-led2_on
-                bclr PTP,$20    ; apagar led rojo
-                bset PTP,$40    ; encender led verde
-
-FinLedTest
-      Rts
-;******************************************************************************
 ;                               Subrutina BCD_BIN
 ;******************************************************************************
 ;   Esta subrutina se encarga específicamente de tomar los dos primeros valores
@@ -1363,314 +1540,66 @@ BCD_BIN
                 aba
                 rts
 
-
 ;******************************************************************************
-;                             Subrutina BORRAR_NUMARRAY
+;                               SUBRUTINA CALCULA
 ;******************************************************************************
-;   Esta subrutina se encarga de borrar las posiciones de Num_Array, colocando
-;   $FF en las posiciones desde Num_Array hasta Num_Array + MAX_TCL.
-Borrar_NumArray
-                ldx #Num_Array
-                dex
-                ldaa #$FF
-                ldab MAX_TCL
-                ;bclr Banderas_1,Array_OK
-
-borrar_na_loop  ; loop para borrar Num_Array
-                staa b,x
-                decb
-                bne borrar_na_loop
-                   rts
-
-
-;******************************************************************************
-;                               TAREA LEER_PB0
-;******************************************************************************
-;   Esta tarea se encarga de detectar Short presses o Long presses en el botón
-;   PB0 (PH0) y es utilizada en el RADAR 623 como el segundo sensor ultrasónico.
-Tarea_LeerPB0
-                ldx Est_Pres_LeerPB0
-                jsr 0,x
-FinTareaPB0      rts
-
-;============================= LEER_PB0 ESTADO 1 ================================
-;   Si se detecta que el botón fue presionado, se carga el timer de supresión de
-;   rebotes (10 ms) y los timers de ShortPress y LongPress. Se pasa al estado 2.
-
-LeerPB0_Est1    brset PortPB,MaskPB0,ret_LeerPB0_Est1
-                movb #tSupRebPB0,Timer_RebPB0
-                movb #tShortP0,Timer_SHP0
-                movb #tLongP0,Timer_LP0
-                movw #LeerPB0_Est2,Est_Pres_LeerPB0
-
-ret_LeerPB0_Est1  rts
-;============================= LEER_PB0 ESTADO 2 ================================
-;   En el estado 2, si se terminó el timer de supresión de rebotes, se vuelve a
-;   leer el valor del botón. Si se detecta que no está presionado, se asume que
-;   fue ruido y es descartado y se regresa al estado 1. Si no es ruido, se pasa
-;   al estado 3 donde se espera a que se acabe el timer de ShortPress.
-LeerPB0_Est2
-                tst Timer_RebPB0
-                bne ret_LeerPB0_Est2
-                brset PortPB,MaskPB0,est2_prox_est1_pb0
-                movw #LeerPB0_Est3,Est_Pres_LeerPB0
-                bra ret_LeerPB0_Est2
-
-est2_prox_est1_pb0      movw #LeerPB0_Est1,Est_Pres_LeerPB0
-
-ret_LeerPB0_Est2 rts
-;============================= LEER_PB ESTADO 3 ================================
-;   Si se acaba el timer de short press y se dejó de presionar el botón, se alza
-;   la bandera de ShortP1 y se regresa al estado 1. Si resulta que no se ha
-;   soltado el botón, se pasa al estado 4.
-LeerPB0_Est3
-                tst Timer_SHP0
-                bne ret_LeerPB0_Est3
-                brset PortPB,MaskPB0,est3_pb0_est1
-
-                movw #LeerPB0_Est4,Est_Pres_LeerPB0
-                bra ret_LeerPB0_Est3
-
-est3_pb0_est1   bset Banderas_1,ShortP0
-                movw #LeerPB0_Est1,Est_Pres_LeerPB0
-
-ret_LeerPB0_Est3 rts
-
-;============================= LEER_PB ESTADO 4 ================================
-;   En el estado 4 se espera a que se acabe el timer de Long Press para
-;   colocar la bandera de LongP0 en Banderas_1. Después de esto, se pasa regresa
-;   estado 1.
-LeerPB0_Est4
-                tst Timer_LP0
-                bne tst_shortp0
-                ; Si el PC llega aca, es que verifica LP
-                brclr PortPB,MaskPB0,ret_LeerPB0_Est4
-                nop
-                bset  Banderas_1,LongP0
-
-                nop
-                bra leerpb0_prox_est1
+;   CALCULA se encarga de calcular las variables necesarias para la tarea
+;   EnServicio del RADAR623.
+;   Recibe: El valor del timer TimerVel
+;   Entrega: las siguientes variables
+;           -DeltaT (diferencia de tiempos entre sensor 1 y 2, décimas de segundo)
+;           -Vel_Calc (Velocidad del vehículo en km/h)
+;           -TimerPant (tiempo que le toma estar a 100 metros de la pantalla,
+;                      (décimas de segundo)
+;           -TimerFinPant (tiempo que le toma alcanzar la pantalla)
+;   Las ecuaciones implementadas son las siguientes. El por qué de las mismas se
+;   detalla en el reporte de esta entrega.
+;
+;           DeltaT = 100 - TimerVel
+;
+;           Vel_Calc = 1440/DeltaT
+;
+;           TimerPant = 200/((Vel_Calc*10)/36)  = 200/(Vel_Calc/3.6)
+;
+;           TimerFinPant = 300/((Vel_Calc*10)/36)  = 300/(Vel_Calc/3.6)
+Calcula
+                ldaa #100
+                ldab TimerVel
+                sba
+                staa DeltaT ; DeltaT = 100 - TimerVel
 
 
-tst_shortp0    brclr PortPB,MaskPB0,ret_LeerPB0_Est4
-              bset  Banderas_1,ShortP0
+                tab
+                clra       ; muevo DeltaT a parte baja y limpio parte alta
+                xgdx       ; muevo DeltaT a X como divisor
+                ldd #1440  ; cargo dividiendo
+                idiv       ; Vel_Calc = 1440/DeltaT
+                xgdx       ; resultado desplazo a acumulador D
+                stab Vel_Calc       ; guardo parte baja como Vel_Calc
 
+                clra
+                ldab Vel_Calc
+                ldy #10
+                emul            ; Vel_Calc * 10
+                ldx #36
+                idiv            ; Vel_Calc * 10/36
+                pshx
+                ldd #200
+                idiv            ; TimerPant = 200/(Vel_Calc * 10/36)
+                xgdx            ; en segundos
+                ldy #10         ; lo multiplico por 10 para ser consistente
+                emul            ; con las unidades de TimerPant
+                stab TimerPant
 
-leerpb0_prox_est1  movw #LeerPB0_Est1,Est_Pres_LeerPB0
-ret_LeerPB0_Est4 rts
+                pulx
+                ldd #300
+                idiv
+                xgdx        ; TimerPant = 300/(Vel_Calc * 10/36)
+                ldy #10     ; lo multiplico por 10 para ser consistente
+                emul        ; con las unidades de TimerPant
+                stab TimerFinPant
 
-
-;******************************************************************************
-;                               TAREA LEER_PB1
-;******************************************************************************
-;   La tarea LEER_PB1 es análoga a la de LEER_PB0, solo con algunos cambios en
-;   los nombres de los timers y variables utilizadas (P0 pasa a ser P1)
-;   por lo tanto, no será comentada.
-Tarea_LeerPB1
-                ldx Est_Pres_LeerPB1
-                jsr 0,x
-FinTareaPB1      rts
-
-;============================= LEER_PB ESTADO 1 ================================
-LeerPB1_Est1     brset PortPB,MaskPB1,ret_LeerPB1_Est1
-                movb #tSupRebPB1,Timer_RebPB1
-                movb #tShortP1,Timer_SHP1
-                movb #tLongP1,Timer_LP1
-                movw #LeerPB1_Est2,Est_Pres_LeerPB1
-
-ret_LeerPB1_Est1  rts
-;============================= LEER_PB ESTADO 2 ================================
-LeerPB1_Est2
-                tst Timer_RebPB1
-                bne ret_LeerPB1_Est2
-                brset PortPB,MaskPB1,est2_pb1_est1
-                movw #LeerPB1_Est3,Est_Pres_LeerPB1
-                bra ret_LeerPB1_Est2
-
-est2_pb1_est1      movw #LeerPB1_Est1,Est_Pres_LeerPB1
-
-ret_LeerPB1_Est2 rts
-;============================= LEER_PB ESTADO 3 ================================
-LeerPB1_Est3
-                tst Timer_SHP1
-                bne ret_LeerPB1_Est3
-                brset PortPB,MaskPB1,est3_pb1_est1
-
-                movw #LeerPB1_Est4,Est_Pres_LeerPB1
-                bra ret_LeerPB1_Est3
-
-est3_pb1_est1   bset Banderas_1,ShortP1
-                ;bset Banderas,ShortP1
-                movw #LeerPB1_Est1,Est_Pres_LeerPB1
-
-ret_LeerPB1_Est3 rts
-
-;============================= LEER_PB ESTADO 4 ================================
-LeerPB1_Est4
-                tst Timer_LP1
-                bne tst_shortp1
-                ; Si el PC llega aca, es que verifica LP
-                brclr PortPB,MaskPB1,ret_LeerPB1_Est4
-                nop
-                bset  Banderas_1,LongP1
-                ;bset Banderas,LongP
-                nop
-                bra est4_pb1_est1
-
-
-tst_shortp1    brclr PortPB,MaskPB1,ret_LeerPB1_Est4
-              bset  Banderas_1,ShortP1
-              ;bset Banderas,ShortP
-
-est4_pb1_est1  movw #LeerPB1_Est1,Est_Pres_LeerPB1
-ret_LeerPB1_Est4 rts
-
-;******************************************************************************
-;                               TAREA TECLADO
-;******************************************************************************
-;   La tarea TECLADO se encarga de conformar un arreglo de teclas válido en
-;   Num_Array. Para esto, hace uso de la subrutina Leer_Teclado. Primeramente
-;   se hace una supresión de rebotes de las teclas, cuando la tecla se suelta
-;   se guarda en Num_Array, teniendo unas consideraciones que se ven en el
-;   estado 4.
-Tarea_Teclado
-                        ldx Est_Pres_TCL
-                        jsr 0,x
-FinTareaTCL             rts
-;========================== TAREA_TECLADO ESTADO 1 =============================
-;    Se llama a Leer_Teclado para ver qué tecla fue presionada. Si es igual A
-;    $FF significa que ninguna tecla fue presionada. Cuando detecta que una
-;    tecla si fue presionada, carga el timer de supresión de rebotes y cambia
-;    al estado 2.
-TareaTCL_Est1
-                        ;movb #$FF,Tecla
-                        ;movb #$F5,Tecla_IN
-                        jsr Leer_Teclado
-                        staa Tecla
-                        cmpa #$FF
-                        beq ret_Teclado
-                        ;movb Tecla,Tecla_IN
-                        Movb #tSuprRebTCL,Timer_RebTCL
-                        movw #TareaTCL_Est2,Est_Pres_TCL
-ret_Teclado             rts
-
-;========================== TAREA_TECLADO ESTADO 2 =============================
-;   En el estado 2, si se acabo el timer de supresión de rebotes, se comparan
-;   Tecla y Tecla_IN, si son iguales se procede con la máquina de estados
-;   pasando al estado 3. Si no son iguales, significa que hubo ruido y se
-;   regresa al estado 1.
-TareaTCL_Est2           tst Timer_RebTCL
-                        bne ret_Teclado_est2
-                        jsr Leer_Teclado
-                        staa Tecla_IN
-                        ldaa Tecla
-                        cmpa Tecla_IN
-                        bne est2_Teclado_prox1
-                        movw #TareaTCL_Est3,Est_Pres_TCL
-                        bra ret_Teclado_est2
-est2_Teclado_prox1      movw #TareaTCL_Est1,Est_Pres_TCL
-
-
-ret_Teclado_est2        rts
-;========================== TAREA_TECLADO ESTADO 3 =============================
-;   En el estado 3 se espera a que el usuario libere la tecla para que se pueda
-;   seguir hacia el estado 4 y que la tecla pueda ser procesada debidamente.
-TareaTCL_Est3
-                        jsr Leer_Teclado
-                        brset PORTA,$0F,Tecla_Liberada ; se liberaron las teclas?
-                        bra ret_Teclado_est3
-
-Tecla_Liberada          movw #TareaTCL_Est4,Est_Pres_TCL
-ret_Teclado_est3        rts
-;========================== TAREA_TECLADO ESTADO 4 =============================
-;   En el estado 4 se conforma Num_Array con ciertas consideraciones.
-;   Primeramente, si Num_Array está lleno, las únicas válidas a recibir pueden ser
-;   E (enviar) o B (borrar). Si Num_Array está vacío, puede recibir cualquier
-;   tecla menos enviar o borrar.
-;   Para desplazarse por Num_Array, se usa direccionamiento indexado por
-;   acumulador y el offset es guardado en la variable Cont_TCL.
-TareaTCL_Est4
-                        ldx #Num_Array
-                        ldaa MAX_TCL
-                        deca
-                        ldab a,x
-                        cmpb #$FF ; se verifica si la última posición
-                        ; está vacía
-                        bne LongMaximaAlcanzada
-                        ; no se ha llenado el array
-                        ; se verifica si está vacío
-                        clra
-                        ldab a,x
-                        cmpb #$FF
-
-                        bne NoEsPrimeraTecla
-                        ; sí es la primera tecla
-                        ; sí está vacío
-                        ldab Tecla
-                        ; si es igual a enter o borrar,
-                        ; se descarta
-                        cmpb #$0B
-                        beq exit_tcl_est4
-                        cmpb #$0E
-                        beq exit_tcl_est4
-                        ldaa Cont_TCL
-                        ldab Tecla
-                        stab a,x
-                        inc Cont_TCL
-                        ; guardar tecla en Num_Array e incrementar
-                        ; Cont_TCL
-                        bra exit_tcl_est4
-; no se encuentra vacío
-NoEsPrimeraTecla
-                        ldab Tecla
-                        cmpb #$0B
-                        beq NoPrimera_EsBorrar
-                        cmpb #$0E
-                        beq NoPrimera_EsEnter
-                        ldaa Cont_TCL
-                        ldab Tecla
-                        stab a,x
-                        inc Cont_TCL
-                        ; guardar la tecla, incrementar Offset
-                        bra exit_tcl_est4
-NoPrimera_EsEnter       ; tecla valida, se borra offset y se pone
-                        ; la bandera Array_OK
-                        clr Cont_TCL
-                        bset Banderas_1,Array_OK
-                        bra exit_tcl_est4
-NoPrimera_EsBorrar      ; se borra la última tecla
-                        ; decrementar offset
-                        ldaa Cont_TCL
-                        beq exit_tcl_est4
-                        ldab #$FF
-                        stab a,x
-                        dec Cont_TCL
-                        bra exit_tcl_est4
-LongMaximaAlcanzada     ; el array sí está lleno, solo recibir E o B
-                        ldab Tecla
-                        cmpb #$0B
-                        beq UltimaTecla_EsBorrar
-                        cmpb #$0E
-                        beq UltimaTecla_EsEnter
-                        bra exit_tcl_est4
-
-UltimaTecla_EsBorrar    ; borrar última, dec offset
-                        ldab #$FF
-                        stab a,x
-                        dec Cont_TCL
-                        bra exit_tcl_est4
-UltimaTecla_EsEnter     ; borrar offset, levantar Array_OK
-                        clr Cont_TCL
-                        bset Banderas_1,Array_OK
-                        bra exit_tcl_est4
-
-exit_tcl_est4           ; borro el valor de la tecla, regreso a est1
-                        movb #$FF,Tecla
-                        movw #TareaTCL_Est1,Est_Pres_TCL
-
-; ---------------------------------------------------------
-
-
+                rts
 
 ; ==============================================================================
 ; ============================= Subrutina Bin_BCD_MuxP =========================
@@ -1765,6 +1694,75 @@ BCD_7Seg                        ; TODO: Optimizar esto en código               
                 stab Dsp4       ; unidades BCD2 en DISP4
 
                 rts
+
+;******************************************************************************
+;                             Subrutina BORRAR_NUMARRAY
+;******************************************************************************
+;   Esta subrutina se encarga de borrar las posiciones de Num_Array, colocando
+;   $FF en las posiciones desde Num_Array hasta Num_Array + MAX_TCL.
+Borrar_NumArray
+                ldx #Num_Array
+                dex
+                ldaa #$FF
+                ldab MAX_TCL
+                ;bclr Banderas_1,Array_OK
+
+borrar_na_loop  ; loop para borrar Num_Array
+                staa b,x
+                decb
+                bne borrar_na_loop
+                   rts
+
+
+
+
+;******************************************************************************
+;                               Rutina InitLCD
+;******************************************************************************
+;   Esta rutina se encarga de inicializar la pantalla LCD. Esta rutina se ejecuta
+;   únicamente al inicio del código y su trabajo es limpiar la pantalla y dejarla
+;   lista para recibir mensajes.
+Rutina_InitLCD
+                        movw #tTimer260uS,Timer260uS
+                        movw #tTimer40uS,Timer40uS
+                        movb #tTimer2mS,Timer2mS        ; inicializo timers
+                        movb #$FF,DDRK          ; pongo como salida Puerto K
+                        clr Punt_LCD            ; limpiar puntero
+                        bclr Banderas_2,RS      ; se van a mandar comandos
+                        bclr Banderas_2,SecondLine
+                        bset Banderas_2,LCD_OK
+
+                        ldy #IniDsp    ; se carga dirección de lista de comandos
+loop_within_InitLCD
+                        ldaa 1,y+
+                        staa CharLCD    ; cargo en CharLCD un comando
+
+                        cmpa #EOB
+                        bne not_eob
+
+                        ; si es EOB
+                        movb #Clear_LCD,CharLCD ; si se llegó al final, enviar
+                        nop                     ; comando CLEAR
+loop_for_clear          jsr Tarea_SendLCD       ; enviar elemento al LCD
+                        brset Banderas_2,FinSendLCD,endedClear ; esperar a que
+                        bra loop_for_clear                     ; termine
+
+endedClear              movb #tTimer2mS,Timer2mS  ; esperar 2ms para que se
+wait_for_clear          tst Timer2mS              ; limpie la pantalla
+                        bne wait_for_clear
+                        bra exit_InitLCD
+
+not_eob                 jsr Tarea_SendLCD
+
+                        brset Banderas_2,FinSendLCD,clearFinSendLCD
+                        bra not_eob
+clearFinSendLCD
+                        bclr Banderas_2,FinSendLCD
+                        bra loop_within_InitLCD
+
+
+exit_InitLCD            rts
+
 
 ; ==============================================================================
 ; ============================= Subrutina Leer Teclado =========================
@@ -1889,7 +1887,7 @@ exit_leer_teclado       rts
 
 
 ;******************************************************************************
-;                       SUBRUTINA DE ATENCION A RTI
+;                       SUBRUTINA DE ATENCION A RTI, MAQUINA DE TIEMPOS
 ;******************************************************************************
 
 Maquina_Tiempos:
