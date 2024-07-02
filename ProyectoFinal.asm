@@ -318,6 +318,7 @@ Fin_Base1S                dB $FF
 ; -------------------- Inicialización de Máquinas de estado ---------------------
         movw #TareaLeerDS_Est1,Est_Pres_LeerDS
         movw #TareaConfig_Est1,Est_Pres_TConfig
+        movw #TInac_Est1,Est_Pres_TInac
         movw #DsplzLeds_Est1,Est_Pres_DsplzLeds
         movw #TareaServ_Est1,Est_Pres_TServ
         movw #LeerPB0_Est1,Est_Pres_LeerPB0
@@ -389,9 +390,10 @@ skipLCD
         jsr Tarea_Teclado
         Jsr Tarea_LeerPB0
         Jsr Tarea_LeerPB1
-        jsr Tarea_LeerDS
-        jsr ControlModo
         jsr Tarea_Mux_Pantalla
+        jsr Tarea_LeerDS
+        ;jsr ControlModo
+
         jsr Tarea_Brillo
         jsr Tarea_DsplzLeds
         Bra Despachador_Tareas
@@ -826,8 +828,36 @@ retConfig_est2  bset DDRP,$03
 ;   Además, esta tarea se encarga de reestablecer los estados iniciales en los
 ;   demás modos de operación.
 
-ControlModo
-                brset Valor_DS,$80,Dip7on
+
+
+;******************************************************************************
+;                               TAREA LeerDS
+;******************************************************************************
+;   La tarea LeerDS lee los DIPSWITCHES y suprime los rebotes de estos.
+;   El valor sin suprimir se guarda en Temp_DS y el valor ya suprimido se
+;   carga en LeerDS.
+Tarea_LeerDS
+                ldx Est_Pres_LeerDS
+                jsr 0,x
+FinLeerDS       rts
+
+;============================ LeerDS ESTADO 1 =================================
+;   El primer estado carga el valor en el puerto H, y si es mayor a 0 carga el
+;   timer de supresión de rebotes y pasa al siguiente estado.
+TareaLeerDS_Est1
+
+                ldaa PTIH
+                cmpa Valor_DS
+                beq DS_ControlModo LeerDS_supr_reb
+
+                movb PTIH,Temp_DS
+                movw #TareaLeerDS_Est2,Est_Pres_LeerDS
+                movb #tTimerRebDS,TimerRebDS
+                bra retLeerDS_est1
+
+                                ; ------- Control de Modo
+
+DS_ControlModo  brset Valor_DS,$80,Dip7on
                 brset Valor_DS,$40,Dip6on
                 ; 0 0 -------------- TAREA MODO INACTIVA
                 jsr Tarea_ModoInactivo
@@ -857,28 +887,8 @@ Dip7_6on        ; 1 1 -------------- TAREA EN SERVICIO
                 movw #TareaConfig_Est1,Est_Pres_TConfig
                 movw #TInac_Est1,Est_Pres_TInac
 
-retControlModo  rts
-;******************************************************************************
-;                               TAREA LeerDS
-;******************************************************************************
-;   La tarea LeerDS lee los DIPSWITCHES y suprime los rebotes de estos.
-;   El valor sin suprimir se guarda en Temp_DS y el valor ya suprimido se
-;   carga en LeerDS.
-Tarea_LeerDS
-                ldx Est_Pres_LeerDS
-                jsr 0,x
-FinLeerDS       rts
+retControlModo
 
-;============================ LeerDS ESTADO 1 =================================
-;   El primer estado carga el valor en el puerto H, y si es mayor a 0 carga el
-;   timer de supresión de rebotes y pasa al siguiente estado.
-TareaLeerDS_Est1
-                ldaa PTIH
-                cmpa #0
-                bls retLeerDS_est1
-                movb PTIH,Temp_DS
-                movw #TareaLeerDS_Est2,Est_Pres_LeerDS
-                movb #tTimerRebDS,TimerRebDS
 retLeerDS_est1  rts
 
 ;============================ LeerDS ESTADO 2 =================================
@@ -888,16 +898,19 @@ retLeerDS_est1  rts
 ;   señal estaba ruidosa y es descartada. Si los valores son iguales,
 ;   se actualiza Valor_DS.
 TareaLeerDS_Est2
+
                 tst TimerRebDS
-                bne retLeerDS_est2
+                lbne retLeerDS_est2
                 ldab PTIH
                 cmpb Temp_DS
                 bne  noise_LeerDS
                 stab Valor_DS
                 movw #TareaLeerDS_Est1,Est_Pres_LeerDS
+
 noise_LeerDS
                 movw #TareaLeerDS_Est1,Est_Pres_LeerDS
                 bra retLeerDS_est2
+
 
 retLeerDS_est2  rts
 ;******************************************************************************
