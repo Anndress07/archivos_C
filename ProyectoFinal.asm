@@ -1559,9 +1559,9 @@ BCD_BIN
 ;
 ;           Vel_Calc = 1440/DeltaT
 ;
-;           TimerPant = 200/((Vel_Calc*10)/36)  = 200/(Vel_Calc/3.6)
+;           TimerPant = 7200/Vel_Calc
 ;
-;           TimerFinPant = 300/((Vel_Calc*10)/36)  = 300/(Vel_Calc/3.6)
+;           TimerFinPant = 10800/Vel_Calc
 Calcula
                 ldaa #100
                 ldab TimerVel
@@ -1579,24 +1579,18 @@ Calcula
 
                 clra
                 ldab Vel_Calc
-                ldy #10
-                emul            ; Vel_Calc * 10
-                ldx #36
-                idiv            ; Vel_Calc * 10/36
-                pshx
-                ldd #200
-                idiv            ; TimerPant = 200/(Vel_Calc * 10/36)
-                xgdx            ; en segundos
-                ldy #10         ; lo multiplico por 10 para ser consistente
-                emul            ; con las unidades de TimerPant
+                xgdx      ; se coloca únicamente Vel_Calc en acum. X (divisor)
+                ldd #7200    ; se carga numerador con 7200
+                idiv
+                xgdx         ; se traslada resultado a acumulador D
                 stab TimerPant
 
-                pulx
-                ldd #300
+                clra
+                ldab Vel_Calc
+                xgdx  ; se coloca únicamente Vel_Calc en acum. X (divisor)
+                ldd #10800 ; se carga numerador con 10800
                 idiv
-                xgdx        ; TimerPant = 300/(Vel_Calc * 10/36)
-                ldy #10     ; lo multiplico por 10 para ser consistente
-                emul        ; con las unidades de TimerPant
+                xgdx  ; se traslada resultado a acumulador D
                 stab TimerFinPant
 
                 rts
