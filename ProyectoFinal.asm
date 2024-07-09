@@ -639,7 +639,7 @@ Tarea_EnServicio
 ;========================== EnServicio ESTADO 1 ================================
 ;   Se cargan los mensajes en la pantalla LCD y se apagan los 7 segmentos.
 ;   Pasa siempre al próximo estado.
-TareaServ_Est1
+TareaServ_Est1  
                 bset LEDS,LDEnServ
                 movw #MSG_RADAR623,Msg_L1
                 movw #MSG_ENSERV_WAIT,Msg_L2
@@ -807,7 +807,7 @@ DsplzLeds_Est1
                 movw #DsplzLeds_Est2,Est_Pres_DsplzLeds
                 movb #tTimerDplzLeds,TimerDplzLeds
                 movb #$80,DplzLeds
-
+                
 
 
 retDsplzLeds_est1
@@ -903,7 +903,7 @@ ret_brillo_est2
 TareaBrillo_Est3
                 brclr ATD0STAT0,MaskSCF,ret_brillo_est3
                 ldd ADR00H      ; Se suman las dos conversiones por ciclo
-                addd ADR01H     ; TODO: preguntar si es este registro
+                addd ADR01H     
                 lsrd            ; se divide entre dos para obtener el promedio
                 nop
                 nop
@@ -1550,7 +1550,7 @@ BCD_BIN
 ;   CALCULA se encarga de calcular las variables necesarias para la tarea
 ;   EnServicio del RADAR623.
 ;   Recibe: El valor del timer TimerVel
-;   Entrega: las siguientes variables
+;   Entrega: las siguientes variables en memoria 
 ;           -DeltaT (diferencia de tiempos entre sensor 1 y 2, décimas de segundo)
 ;           -Vel_Calc (Velocidad del vehículo en km/h)
 ;           -TimerPant (tiempo que le toma estar a 100 metros de la pantalla,
@@ -1582,17 +1582,17 @@ Calcula
                 stab Vel_Calc       ; guardo parte baja como Vel_Calc
 
                 clra
-                ldab Vel_Calc
+                ldab Vel_Calc   
                 xgdx      ; se coloca únicamente Vel_Calc en acum. X (divisor)
-                ldd #7200    ; se carga numerador con 7200
-                idiv
+                ldd #7200    ; se carga numerador 
+                idiv            
                 xgdx         ; se traslada resultado a acumulador D
                 stab TimerPant
 
                 clra
-                ldab Vel_Calc
+                ldab Vel_Calc 
                 xgdx  ; se coloca únicamente Vel_Calc en acum. X (divisor)
-                ldd #10800 ; se carga numerador con 10800
+                ldd #10800 ; se carga numerador 
                 idiv
                 xgdx  ; se traslada resultado a acumulador D
                 stab TimerFinPant
@@ -1602,27 +1602,31 @@ Calcula
 ; ==============================================================================
 ; ============================= Subrutina Bin_BCD_MuxP =========================
 ; ==============================================================================
+;  Convierte en BCD un número binario de 8 bits usando el algoritmo XS3 visto en
+;  clase. 
+;       Recibe: Número binario de 1 byte por el acumulador a
+;       Devuevle: el número en BCD en la variable BCD en memoria
 Bin_BCD_MuxP
-                pshd
                 pshy
-                pshx
+                pshd    ; Guardo acumuladores en la pila, serán utilizados en la
+                pshx    ; subrutina actual. 
+                ldx #7  ; Contador para procesar 1 byte
+                ldab #0 ; Limpio variables, van a ser utilizadas en la subrutina.
                 clr BCD
-                ldab #0
-                ldx #7
 
 loop_bintobcd
-                asla
+                lsla    
                 rol BCD
-                pshx
-                psha
+                psha    ; Guar
+                pshx    ; Guardo    
 check_magnitude
                 ldaa BCD
                 anda #$0F
-                cmpa #$05
+                cmpa #5
 mayora5
-                blt mayora5_end
+                blt mayora5_next
                 adda #$03
-mayora5_end
+mayora5_next
                 tab
                 ldaa BCD
                 anda #$F0
@@ -1632,20 +1636,17 @@ mayora50
                 adda #$30
 mayora50_end
                 aba
-process
+
                 staa BCD
-                pula
                 pulx
+                pula
                 dex
-                cpx #0
                 bne loop_bintobcd
-                asla
+                lsla
                 rol BCD
                 pulx
-                puly
                 puld
-
-
+                puly
 
                 rts
 
@@ -1657,41 +1658,35 @@ process
 ;   La subrutina toma el BCD1 y coloca su MSB en Dsp1 y el LSB en Dsp2.
 ;   Para BCD2, coloca su MSB en Dsp3 y el LSB en Dsp4.
 
-BCD_7Seg                        ; TODO: Optimizar esto en código                                                        ;-
+BCD_7Seg                                                    ;-
                 ;Segment         dB $3F,$06,$5B,$4F,$66,$6D,$7D,$07,$7F,$6F,$40
-                ; aa = 99
+                ldy #1
                 ldx #Segment    ; Cargo la tabla con los valores en formato 7 segm
                 ldaa BCD1
-                psha            ; guardo BCD1
+                bra loop_7seg
+BCD_2           staa Dsp1
+                stab Dsp2 
+                iny
+                ldaa BCD2
+                bra loop_7seg
+
+loop_7seg       psha            ; guardo BCD
                 anda #$F0       ; tomo la parte alta
                 lsra
                 lsra
                 lsra
                 lsra            ; lo desplazo para que me quede a la derecha
-                ldab a,x        ; indexo por acumulador
-                stab Dsp1       ; guardo las decenas BCD1 en Disp1
+                ldaa a,x        ; indexo por acumulador
+                pulb            ; cargo BCD1 en A
+                andb #$0F       ; tomo la parte baja
+                ldab b,x        ; indexo con el valor de la parte baja
 
-                pula            ; cargo BCD1 en A
-                anda #$0F       ; tomo la parte baja
-                ldab a,x        ; indexo con el valor de la parte baja
-                stab Dsp2       ; unidades BCD1 en DISP2
-                ; se repite el procedimiento para BCD2.
-                ldaa BCD2
-                psha
-                anda #$F0
-                lsra
-                lsra
-                lsra
-                lsra
-                ldab a,x
-                stab Dsp3       ; decenas BCD2 en DISP3
+                cpy #1
+                beq BCD_2
+                staa Dsp3
+                stab Dsp4
 
-                pula
-                anda #$0F
-                ldab a,x
-                stab Dsp4       ; unidades BCD2 en DISP4
-
-                rts
+exit                rts
 
 ;******************************************************************************
 ;                             Subrutina BORRAR_NUMARRAY
@@ -1709,7 +1704,7 @@ borrar_na_loop  ; loop para borrar Num_Array
                 staa b,x
                 decb
                 bne borrar_na_loop
-                   rts
+                rts
 
 
 
@@ -1791,7 +1786,7 @@ loop_leer_teclado       movb PATRON,PORTA
                         ldab PATRON     ; me fijo si el PATRON ya se llenó de 1s
                         cmpb #$FF       ; mientras no este lleno de 1s, salta
                         bne loop_leer_teclado   ; al loop de leer teclado
-                        ldaa #$FF       ; TODO: ver esto
+                        ldaa #$FF       ; Cargo $FF cuando una tecla NO fue presionada
                         lbra exit_leer_teclado
 tcl_colu1       ; se llega a este branch si se presionó una tecla de la col1
 
@@ -1822,6 +1817,8 @@ tcl_colu2       ; se llega a este branch si se presionó una tecla de col2
 ;  en el acumulador A (digE tiene valor de 12, digB tiene el valor de 10)
 ;  y se indexa por acumulador A la lista de teclas que fue cargada en el
 ;  acumulador X.
+;  Tabla Teclas -> $01,$02,$03,$04,$05,$06,$07,$08,$09,$0B,$00,$0E
+; -------------------------------------------
 dig1    clrb
         ldaa b,x
         staa Tecla
@@ -1838,8 +1835,7 @@ digB    ldab #9
         ldaa b,x
         staa Tecla
         bra exit_leer_teclado
-
-; Teclas            dB $01,$02,$03,$04,$05,$06,$07,$08,$09,$0B,$00,$0E
+; -------------------------------------------
 dig2    ldab #1
         ldaa b,x
         staa Tecla
@@ -1856,9 +1852,7 @@ dig0    ldab #10
         ldaa b,x
         staa Tecla
         bra exit_leer_teclado
-
 ; -------------------------------------------
-
 dig3    ldab #2
         ldaa b,x
         staa Tecla
@@ -1877,69 +1871,58 @@ dig9    ldab #8
 digE    ldab #11
         ldaa b,x
         staa Tecla
-
-
+; -------------------------------------------
 exit_leer_teclado       rts
 
 
-
-
 ;******************************************************************************
-;                       SUBRUTINA DE ATENCION A RTI, MAQUINA DE TIEMPOS
+;                  SUBRUTINA DE ATENCION A OC5, MAQUINA DE TIEMPOS
 ;******************************************************************************
+;  Maneja toda la base de tiempos de la aplicación. Usa la interrupción OC5 para
+;  interrumpir cada 20 us y decrementar los timers en la Tabla de timers. 
+;  Hace uso de la subrutina Decre_Timers_BaseT que se encarga de decrementar los timers
+;  de la tabla de dos bytes y Decre_Timers que decrementa los de un byte. 
+;       Recibe: Las variables de la tabla de timers ubicada en memoria y las 
+;               decrementa. 
 
 Maquina_Tiempos:
-               ;{COLOCAR EL CODIGO DE LA SUBRUTINA QUE IMPLEMENTA LA
-               ; MAQUINA DE TIEMPOS }
-               ;******************************************************************************
-               ldx #Tabla_Timers_BaseT
+               
+               ldx #Tabla_Timers_BaseT    
+               jsr Decre_Timers_BaseT   
 
-               jsr Decre_Timers_BaseT
-
-               ldd Timer1mS
-               cpd #0
-               bne check_10ms
-
-               Movw #tTimer1mS,Timer1mS
-               ldx #Tabla_Timers_Base1mS
-
+               ldd Timer1mS     
+               bne check_10ms ; si no es cero, revise el siguiente timer
+                ; si se entra aquí, significa que el timer de 1mS se hizo 0
+               Movw #tTimer1mS,Timer1mS ; se recarga el timer
+               ; hay que decrementar todos los timers de 1mS por uno
+               ldx #Tabla_Timers_Base1mS 
                jsr Decre_Timers
-check_10ms
-               ;tst Timer10mS
+                ; los siguientes timers siguen el mismo procedimiento. 
+check_10ms     
                ldd Timer10mS
-               cpd #0
                bne check_100ms
 
                Movw #tTimer10mS,Timer10mS
                ldx #Tabla_Timers_Base10mS
-
                jsr Decre_Timers
-
 check_100ms
-               ;tst Timer100mS
                ldd Timer100mS
-               cpd #0
                bne check_1s
 
                Movw #tTimer100mS,Timer100mS
                ldx #Tabla_Timers_Base100mS
-
                jsr Decre_Timers
-
 check_1s
-              ;tst Timer1S
               ldd Timer1S
-              cpd #0
               bne exit_checking
 
               Movw #tTimer1S,Timer1S
               ldx #Tabla_Timers_Base1S
-
               jsr Decre_Timers
-
+; Fin de la subrutina de atención a la interrupción, hay que recargar la carga
+; del Output Compare Canal 5
 exit_checking
-               ;bset CRGFLG,#$80 ; RTIF = 1
-               ldd TCNT
+               ldd TCNT         ; TCNT = 480 para interrupt cada 20us
                addd #Carga_TC5
                std TC5
                RTI
@@ -1947,34 +1930,36 @@ exit_checking
 ; ==============================================================================
 ; ===== Subrutina de Maquina_Tiempos, Decre_Timers_BaseT
 ; ==============================================================================
+;  Subrutina de la máquina de tiempos que decrementa los timers de 2 bytes 
+;  (Timers BaseT)
 Decre_Timers_BaseT
-                ldy 2,x+
-                cpy #0
+                ldy 2,x+        
                 beq Decre_Timers_BaseT
-                cpy #$FFFF
+                cpy #$FFFF   ; Si no se ha alcanzado el fin de la tabla de timers
+                             ; baseT, siga decrementando
                 bne dec_timer
-                rts
+                bra exit_decre_tt 
 dec_timer
                 dey
                 sty -2,x
                 bra Decre_Timers_BaseT
 
+exit_decre_tt   rts
+
 ; ==============================================================================
 ; ===== Subrutina de Maquina_Tiempos, Decre_Timers
 ; ==============================================================================
-
+;  Subrutina de la máquina de tiempos que decrementa los timers de 1 byte. 
+;  (Tabla_Timers_BaseXXXXs)
 Decre_Timers
                 ldaa 0,x
-                cmpa #0
                 beq inc_decre_timers
-                cmpa #$FF
+                cmpa #$FF  ; Si no se ha alcanzado el fin de la tabla de timers
+                             ;siga decrementando     
                 beq exit_decre_timers
-
-
-load_decre_timers
                 dec 0,x
-inc_decre_timers
-
+; para incrementar la dirección con la que se indexa la tabla timers
+inc_decre_timers  
                 inx
                 bra Decre_Timers
 exit_decre_timers
