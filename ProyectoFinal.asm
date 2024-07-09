@@ -430,7 +430,6 @@ DS_ControlModo  brset Valor_DS,$80,Dip7on
                 brset Valor_DS,$40,Dip6on
                 ; 0 0 -------------- TAREA MODO INACTIVA
                 jsr Tarea_ModoInactivo
-                bset LEDS,LDInac
                 bclr LEDS,LDConfig              ; apago leds de otras tareas
                 bclr LEDS,LDEnServ
                 movw #TareaServ_Est1,Est_Pres_TServ     ; reestablezco estados
@@ -439,7 +438,6 @@ DS_ControlModo  brset Valor_DS,$80,Dip7on
 Dip6on          ; 0 1 -------------- TAREA CONFIGURAR
                 jsr Tarea_Configurar
                 bclr LEDS,LDInac
-                bset LEDS,LDConfig
                 bclr LEDS,LDEnServ
                 movw #TInac_Est1,Est_Pres_TInac
                 movw #TareaServ_Est1,Est_Pres_TServ
@@ -452,7 +450,6 @@ Dip7_6on        ; 1 1 -------------- TAREA EN SERVICIO
                 jsr Tarea_EnServicio
                 bclr LEDS,LDInac
                 bclr LEDS,LDConfig
-                bset LEDS,LDEnServ
                 movw #TareaConfig_Est1,Est_Pres_TConfig
                 movw #TInac_Est1,Est_Pres_TInac
 
@@ -498,6 +495,7 @@ Tarea_ModoInactivo
 ;   En el primer estado se coloca el mensaje de modo inactivo en el LCD, y
 ;   también apaga los display de 7 segmentos. Siempre pasa al segundo estado.
 TInac_Est1
+                bset LEDS,LDInac
                 movw #MSG_RADAR623,Msg_L1  ;Colocación de mensajes en los punteros
                 movw #MSG_INACTIV,Msg_L2
                 bclr Banderas_2,LCD_OK  ; borrar para correr LCD
@@ -562,6 +560,7 @@ Tarea_Configurar
 ;   displays de más a la derecha. También limpia el Num_Array por si hay valores
 ;   no previstos.
 TareaConfig_Est1
+                bset LEDS,LDConfig
                 ;bclr Banderas_2,SecondLine
                 movw #MSG_CONFIG2,Msg_L2
                 movw #MSG_CONFIG1,Msg_L1
@@ -640,7 +639,9 @@ Tarea_EnServicio
 ;========================== EnServicio ESTADO 1 ================================
 ;   Se cargan los mensajes en la pantalla LCD y se apagan los 7 segmentos.
 ;   Pasa siempre al próximo estado.
-TareaServ_Est1  movw #MSG_RADAR623,Msg_L1
+TareaServ_Est1
+                bset LEDS,LDEnServ
+                movw #MSG_RADAR623,Msg_L1
                 movw #MSG_ENSERV_WAIT,Msg_L2
                 bclr Banderas_2,LCD_OK
 
@@ -808,7 +809,9 @@ DsplzLeds_Est1
                 movb #$80,DplzLeds
 
 
+
 retDsplzLeds_est1
+                bclr LEDS,$F8
                 rts
 ;========================== DsplzLeds ESTADO 1 ================================
 ;   En el estado 2 se comprueba el valor actual del patrón de LEDS. Si se
@@ -837,6 +840,7 @@ cambiarADer     ; llegó al final de la izquierda - cambiar a der-izq
                 bclr Banderas_2,DsplzIzquierda
 
 dplz2_join      movb DplzLeds,LEDS ; se carga el valor a los LEDS
+                bset LEDS,LDEnServ
 
                 brset Banderas_2,Alarma,reloadLedTimer
                 movw #DsplzLeds_Est1,Est_Pres_DsplzLeds
