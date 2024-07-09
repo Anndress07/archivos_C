@@ -1,7 +1,7 @@
-;******************************************************************************
- ;***           Marvin Castro Castro - C01884 Microprocesadores - EIE UCR
- ;***                   PROYECTO FINAL: RADAR 623
- ;*** ==========================================================================
+ ;==============================================================================
+ ;===           Marvin Castro Castro - C01884 Microprocesadores - EIE UCR
+ ;===                   PROYECTO FINAL: RADAR 623
+ ;==============================================================================
  ;    Descripción: RADAR 623 Es un radar de control de velocidad de vehículos.
  ;    Por medio de dos botones (PH3 Y PH0) se simulan dos sensores ultrasónicos
  ;    y sacando la diferencia de tiempos entre estos se puede calcular la
@@ -14,13 +14,48 @@
  ;
  ;    Por medio de los DIP SWITCHES (PH7 y PH6) se escoje el modo de operación
  ;    de la aplicación, siendo los modos: inactivo, configuración, y en servicio.
+ ;    El sistema hace uso extensivo de la pantalla LCD, 7 segmentos y LEDS para 
+ ;    desplegar información. También hace uso del convertidor analógico digital
+ ;    0 para controlar el brillo de los leds y 7 segmentos por medio del 
+ ;    potenciómetro trimmer conectado al puerto 7 del ATD0. 
+ ;    
+ ;    En cuanto a la estructura del programa, se sigue el siguiente orden
+ ;              1. Relocalización de vector de interrupción OC5
+ ;              2. Declaración de valores del sistema
+ ;              3. Declaración de estructuras de datos
+ ;              4. Configuración de periféricos y programa principal
+ ;              5. Tareas
+ ;                      5.1  Tarea LeerDS
+ ;                      5.2  Tarea ModoInactivo
+ ;                      5.3  Tarea ModoConfigurar
+ ;                      5.4  Tarea EnServicio
+ ;                      5.5  Tarea DsplzLeds
+ ;                      5.6  Tarea Brillo
+ ;                      5.7  Tarea Teclado
+ ;                      5.8  Tarea LED_Testigo
+ ;                      5.9  Tarea LeerPB0
+ ;                      5.10 Tarea LeerPB1
+ ;                      5.11 Tarea MuxPantalla
+ ;                      5.12 Tarea LCD
+ ;                      5.13 Tarea SendLCD
+ ;              6. Subrutinas
+ ;                      6.1 Subrutina Calcula
+ ;                      6.2 Subrutina Bin_BCD_MuxP
+ ;                      6.3 Subrutina BCD_7Seg
+ ;                      6.4 Subrutina Borrar_NumArray
+ ;                      6.5 Rutina InitLCD
+ ;                      6.6 Subrutina Leer_Teclado
+ ;              7. Máquina de tiempos
+ ;                      7.1 Subrutina Decre_Timers_BaseT
+ ;                      7.2 Subrutina Decre_Timers                        
+ ;==============================================================================
 
  ;******************************************************************************
 #include registers.inc
  ;******************************************************************************
  ;                 RELOCALIZACIÓN DE VECTOR DE INTERRUPCIÓN
  ;******************************************************************************
-                                Org $3E64       ; vector Output Compare
+                                Org $3E64       ; vector Output Compare Canal 5
                                 dw Maquina_Tiempos
 
 ;******************************************************************************
@@ -361,7 +396,7 @@ Fin_Base1S                dB $FF
         movb #$01,PUCR      ; activo pull ups para puerto A
 
 ;===============================================================================
-;                           PROGRAMA PRINCIPAL
+;                               PROGRAMA PRINCIPAL
 ;===============================================================================
         Lds #$3BFF          ; Inicialización de puntero de pila
         Cli                 ; habilitación de interrupciones
@@ -374,10 +409,7 @@ Fin_Base1S                dB $FF
         clr CharLCD
         clr Cont_TCL
 
-        jsr Rutina_InitLCD  ;
-        ;movw #MSG1,Msg_L1
-        ;movw #MSG2,Msg_L2
-        ;bclr Banderas_2,LCD_OK
+        jsr Rutina_InitLCD  ; Se inicializa la pantalla LCD borrándola
 
 ;  ============================  Despachador de Tareas ==========================
 Despachador_Tareas
@@ -1716,42 +1748,42 @@ borrar_na_loop  ; loop para borrar Num_Array
 ;   únicamente al inicio del código y su trabajo es limpiar la pantalla y dejarla
 ;   lista para recibir mensajes.
 Rutina_InitLCD
-                        movw #tTimer260uS,Timer260uS
-                        movw #tTimer40uS,Timer40uS
-                        movb #tTimer2mS,Timer2mS        ; inicializo timers
-                        movb #$FF,DDRK          ; pongo como salida Puerto K
-                        clr Punt_LCD            ; limpiar puntero
-                        bclr Banderas_2,RS      ; se van a mandar comandos
-                        bclr Banderas_2,SecondLine
-                        bset Banderas_2,LCD_OK
+                movw #tTimer260uS,Timer260uS
+                movw #tTimer40uS,Timer40uS
+                movb #tTimer2mS,Timer2mS        ; inicializo timers
+                movb #$FF,DDRK          ; pongo como salida Puerto K
+                clr Punt_LCD            ; limpiar puntero
+                bclr Banderas_2,RS      ; se van a mandar comandos
+                bclr Banderas_2,SecondLine
+                bset Banderas_2,LCD_OK
 
-                        ldy #IniDsp    ; se carga dirección de lista de comandos
+                ldy #IniDsp    ; se carga dirección de lista de comandos
 loop_within_InitLCD
-                        ldaa 1,y+
-                        staa CharLCD    ; cargo en CharLCD un comando
+                ldaa 1,y+
+                staa CharLCD    ; cargo en CharLCD un comando
 
-                        cmpa #EOB
-                        bne not_eob
+                cmpa #EOB
+                bne not_eob
 
-                        ; si es EOB
-                        movb #Clear_LCD,CharLCD ; si se llegó al final, enviar
-                        nop                     ; comando CLEAR
+                ; si es EOB
+                movb #Clear_LCD,CharLCD ; si se llegó al final, enviar
+                nop                     ; comando CLEAR
 loop_for_clear          jsr Tarea_SendLCD       ; enviar elemento al LCD
-                        brset Banderas_2,FinSendLCD,endedClear ; esperar a que
-                        bra loop_for_clear                     ; termine
+                brset Banderas_2,FinSendLCD,endedClear ; esperar a que
+                bra loop_for_clear                     ; termine
 
 endedClear              movb #tTimer2mS,Timer2mS  ; esperar 2ms para que se
 wait_for_clear          tst Timer2mS              ; limpie la pantalla
-                        bne wait_for_clear
-                        bra exit_InitLCD
+                bne wait_for_clear
+                bra exit_InitLCD
 
 not_eob                 jsr Tarea_SendLCD
 
-                        brset Banderas_2,FinSendLCD,clearFinSendLCD
-                        bra not_eob
+                brset Banderas_2,FinSendLCD,clearFinSendLCD
+                bra not_eob
 clearFinSendLCD
-                        bclr Banderas_2,FinSendLCD
-                        bra loop_within_InitLCD
+                bclr Banderas_2,FinSendLCD
+                bra loop_within_InitLCD
 
 
 exit_InitLCD            rts
@@ -1768,49 +1800,49 @@ exit_InitLCD            rts
 ;   actual de la máscara PATRON, se puede saber cuál fue la tecla presionada.
 
 Leer_Teclado            movb #$EF,PATRON    ; Patrón inicia con un 0 en bit 4
-                        ldx #Teclas         ; carga dirección de teclas
+                ldx #Teclas         ; carga dirección de teclas
 loop_leer_teclado       movb PATRON,PORTA
-                        ;clrb
-                        nop
-                        nop
-                        nop
-; si el bit 3 se hizo 0, significa que se presionó alguna tecla de la columna 3
-                        brclr PORTA,$04,tcl_colu2
-; si el bit 2 se hizo 0, significa que se presionó alguna tecla de la columna 2
-                        brclr PORTA,$02,tcl_colu1
-; si el bit 1 ser hizo 0, se presionó de la columna 1
-                        brclr PORTA,$01,tcl_colu0
-; si el bit 0 se hizo 0, se presionó de la columna 0
-                        orcc #$01       ; Fuerzo un 1 en el carry
-                        rol PATRON      ; para desplazar con 1s
-                        ldab PATRON     ; me fijo si el PATRON ya se llenó de 1s
-                        cmpb #$FF       ; mientras no este lleno de 1s, salta
-                        bne loop_leer_teclado   ; al loop de leer teclado
-                        ldaa #$FF       ; Cargo $FF cuando una tecla NO fue presionada
-                        lbra exit_leer_teclado
+                ;clrb
+                nop
+                nop
+                nop
+                ; si el bit 3 se hizo 0, significa que se presionó 
+                ;alguna tecla de la columna 3
+                brclr PORTA,$04,tcl_colu2       
+                ; si el bit 2 se hizo 0, significa que se presionó 
+                ; de la columna 2
+                brclr PORTA,$02,tcl_colu1
+                ; si el bit 1 ser hizo 0, se presionó de la columna 1
+                brclr PORTA,$01,tcl_colu0
+                ; si el bit 0 se hizo 0, se presionó de la columna 0
+                orcc #$01       ; Fuerzo un 1 en el carry
+                rol PATRON      ; para desplazar con 1s
+                ldab PATRON     ; me fijo si el PATRON ya se llenó de 1s
+                cmpb #$FF       ; mientras no este lleno de 1s, salta
+                bne loop_leer_teclado   ; al loop de leer teclado
+                ldaa #$FF       ; Cargo $FF cuando una tecla NO fue presionada
+                lbra exit_leer_teclado
 tcl_colu1       ; se llega a este branch si se presionó una tecla de la col1
 
-        brclr PORTA,$20,dig5  ; Si el patrón es 1101, se presionó la tecla 5
-        brclr PORTA,$40,dig8  ; patrón 1011, presionó tecla 8
-        brclr PORTA,$80,dig0  ; patrón 0111, presionó tecla 0
-        brclr PORTA,$10,dig2  ; patrón 1110, presionó tecla 2
-        lbra exit_leer_teclado
+                brclr PORTA,$20,dig5  ; Si el patrón es 1101, se presionó la tecla 5
+                brclr PORTA,$40,dig8  ; patrón 1011, presionó tecla 8
+                brclr PORTA,$80,dig0  ; patrón 0111, presionó tecla 0
+                brclr PORTA,$10,dig2  ; patrón 1110, presionó tecla 2
+                lbra exit_leer_teclado
 
 tcl_colu0       ; se llega a este branch si se presionó una tecla de col0
-        brclr PORTA,$10,dig1
-        brclr PORTA,$20,dig4
-        brclr PORTA,$40,dig7
-        brclr PORTA,$80,digB
-        lbra exit_leer_teclado
+                brclr PORTA,$10,dig1
+                brclr PORTA,$20,dig4
+                brclr PORTA,$40,dig7
+                brclr PORTA,$80,digB
+                lbra exit_leer_teclado
 
 tcl_colu2       ; se llega a este branch si se presionó una tecla de col2
-        brclr PORTA,$10,dig3
-        brclr PORTA,$20,dig6
-        brclr PORTA,$40,dig9
-        brclr PORTA,$80,digE
-        lbra exit_leer_teclado
-
-
+                brclr PORTA,$10,dig3
+                brclr PORTA,$20,dig6
+                brclr PORTA,$40,dig9
+                brclr PORTA,$80,digE
+                lbra exit_leer_teclado
 
 ;  En esta parte se implementa la lógica para colocar la tecla presionada
 ;  en el valor de Tecla. Lo que se hace es cargar el valor de la Tecla - 1
@@ -1819,60 +1851,64 @@ tcl_colu2       ; se llega a este branch si se presionó una tecla de col2
 ;  acumulador X.
 ;  Tabla Teclas -> $01,$02,$03,$04,$05,$06,$07,$08,$09,$0B,$00,$0E
 ; -------------------------------------------
-dig1    clrb
-        ldaa b,x
-        staa Tecla
-        bra exit_leer_teclado
-dig4    ldab #3
-        ldaa b,x
-        staa Tecla
-        bra exit_leer_teclado
-dig7    ldab #6
-        ldaa b,x
-        staa Tecla
-        bra exit_leer_teclado
-digB    ldab #9
-        ldaa b,x
-        staa Tecla
-        bra exit_leer_teclado
+dig1            clrb
+                ldaa b,x
+                staa Tecla
+                bra exit_leer_teclado
+dig4            ldab #3
+                ldaa b,x
+                staa Tecla
+                bra exit_leer_teclado
+dig7            ldab #6
+                ldaa b,x
+                staa Tecla
+                bra exit_leer_teclado
+digB            ldab #9
+                ldaa b,x
+                staa Tecla
+                bra exit_leer_teclado
 ; -------------------------------------------
-dig2    ldab #1
-        ldaa b,x
-        staa Tecla
-        bra exit_leer_teclado
-dig5    ldab #4
-        ldaa b,x
-        staa Tecla
-        bra exit_leer_teclado
-dig8    ldab #7
-        ldaa b,x
-        staa Tecla
-        bra exit_leer_teclado
-dig0    ldab #10
-        ldaa b,x
-        staa Tecla
-        bra exit_leer_teclado
+dig2            ldab #1
+                ldaa b,x
+                staa Tecla
+                bra exit_leer_teclado
+dig5            ldab #4
+                ldaa b,x
+                staa Tecla
+                bra exit_leer_teclado
+dig8            ldab #7
+                ldaa b,x
+                staa Tecla
+                bra exit_leer_teclado
+dig0            ldab #10
+                ldaa b,x
+                staa Tecla
+                bra exit_leer_teclado
 ; -------------------------------------------
-dig3    ldab #2
-        ldaa b,x
-        staa Tecla
-        bra exit_leer_teclado
+dig3            ldab #2
+                ldaa b,x
+                staa Tecla
+                bra exit_leer_teclado
 
-dig6    ldab #5
-        ldaa b,x
-        staa Tecla
-        bra exit_leer_teclado
+dig6            ldab #5
+                ldaa b,x
+                staa Tecla
+                bra exit_leer_teclado
 
-dig9    ldab #8
-        ldaa b,x
-        staa Tecla
-        bra exit_leer_teclado
+dig9            ldab #8
+                ldaa b,x
+                staa Tecla
+                bra exit_leer_teclado
 
-digE    ldab #11
-        ldaa b,x
-        staa Tecla
+digE            ldab #11
+                ldaa b,x
+                staa Tecla
 ; -------------------------------------------
-exit_leer_teclado       rts
+exit_leer_teclado       
+                nop
+                nop
+                nop
+                rts
 
 
 ;******************************************************************************
