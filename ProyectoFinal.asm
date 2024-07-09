@@ -424,39 +424,47 @@ skipLCD
         Jsr Tarea_LeerPB1
         jsr Tarea_Mux_Pantalla
         jsr Tarea_LeerDS
-        ;jsr ControlModo
-
         jsr Tarea_Brillo
         jsr Tarea_DsplzLeds
         Bra Despachador_Tareas
-
+;  =============================================================================
 
 ;******************************************************************************
 ;                               TAREA LeerDS
 ;******************************************************************************
-;   La tarea LeerDS lee los DIPSWITCHES y suprime los rebotes de estos.
+;   La tarea LeerDS lee los DIPSWITCHES y suprime los rebotes de estos. También
+;   se encarga de colocar el RADAR 623 en el respectivo modo de operación
+;   leyendo los DIPS7-6 (Valor_DS)
 ;   El valor sin suprimir se guarda en Temp_DS y el valor ya suprimido se
-;   carga en LeerDS.
+;   carga en Valor_DS.
+;       Modifica: Valor_DS, variable de un byte en memoria 
 Tarea_LeerDS
                 ldx Est_Pres_LeerDS
                 jsr 0,x
 FinLeerDS       rts
 
 ;============================ LeerDS ESTADO 1 =================================
-;   El primer estado carga el valor en el puerto H, y si es mayor a 0 carga el
-;   timer de supresión de rebotes y pasa al siguiente estado.
+;   El primer estado verifica si Valor_DS es igual a PTIH (puerto de DipSwitches)
+;   esto para ver si los dipswitches han sido modificados y deben suprimirse los 
+;   rebotes. Si no han sido modificados, se pasa a la parte de control de modo
+;
+;   El control de modo selecciona el estado del RADAR 623 dependiendo de DIPS.7
+;   y DIPS.6, si son 00 es Modo Inactivo, si son 01 es Modo Configurar, y si es
+;   11 es Modo EnServicio. 
+;   Cuando se escoge un modo, los demás modos se regresan al estado inicial. 
 TareaLeerDS_Est1
 
                 ldaa PTIH
                 cmpa Valor_DS
                 beq DS_ControlModo LeerDS_supr_reb
-
+                ; PTIH y Valor_DS no son iguales, se pasa al estado 2 
+                ; (suprimir rebotes)
                 movb PTIH,Temp_DS
                 movw #TareaLeerDS_Est2,Est_Pres_LeerDS
                 movb #tTimerRebDS,TimerRebDS
                 bra retLeerDS_est1
 
-                                ; ------- Control de Modo
+                ; CONTROL DE MODO RADAR 623
 
 DS_ControlModo  brset Valor_DS,$80,Dip7on
                 brset Valor_DS,$40,Dip6on
@@ -503,11 +511,8 @@ TareaLeerDS_Est2
                 cmpb Temp_DS
                 bne  noise_LeerDS
                 stab Valor_DS
-                ;movw #TareaLeerDS_Est1,Est_Pres_LeerDS
-
 noise_LeerDS
                 movw #TareaLeerDS_Est1,Est_Pres_LeerDS
-                ;bra retLeerDS_est2
 
 
 retLeerDS_est2  rts
@@ -538,7 +543,7 @@ TInac_Est1
                 rts
 ;============================ ModoInactivo ESTADO 2 ===============================
 ;   Si se detecta un LongPress en alguno de los botones, se coloca la velocidad
-;   límite en los display de 7 segmentos de la derecha.
+;   límite en los display de 7 segmentos de la derecha durante 3 segundos.
 TInac_Est2
                 brset Banderas_1,LongP0,mostrarInactivo
                 brset Banderas_1,LongP1,mostrarInactivo
@@ -580,6 +585,7 @@ ret_TInac_est3  bset DDRP,$03                   ; Habilitar 2 displays de la
 ;   Leer_Teclado que se encarga de leer las teclas del teclado matricial.
 ;   y a su vez se ejecuta la Tarea Teclado que se encarga de conformar un
 ;   arreglo de teclas válido.
+;       Modifica: potencialmente puede modificar Vel_LIM
 Tarea_Configurar
                 ldx Est_Pres_TConfig
                 jsr 0,x
@@ -597,10 +603,6 @@ TareaConfig_Est1
                 movw #MSG_CONFIG2,Msg_L2
                 movw #MSG_CONFIG1,Msg_L1
                 bclr Banderas_2,LCD_OK
-
-                ;brset Banderas_2,LCD_OK,return_config_est1
-
-
 
                 ldaa Vel_LIM
                 jsr Bin_BCD_MuxP
@@ -629,12 +631,10 @@ TareaConfig_Est2
                 staa ValorLIM
                 jsr Bin_BCD_MuxP
                 movb BCD,BCD2
-                bset DDRP,$03
+                bset DDRP,$03   ; enciende displays de la derecha
                 bset PTP,$03
                 jsr BCD_7Seg
-                movb ValorLIM,Vel_LIM
-
-
+                movb ValorLIM,Vel_LIM   ;se actualiza Vel_LIM
 
 est2_conf_borrartcl
                 jsr Borrar_NumArray
@@ -659,7 +659,7 @@ retConfig_est2  bset DDRP,$03
 ;           -TimerPant (tiempo que le toma estar a 100 metros de la pantalla,
 ;                      (décimas de segundo)
 ;           -TimerFinPant (tiempo que le toma alcanzar la pantalla)
-;
+;                      (décimas de segundo)
 ;   Esta tarea además, despliega información en los 7 segmentos y compara
 ;   la velocidad calculada con el límite de velocidad, si supera el límite
 ;   activa una alarma.
@@ -697,8 +697,6 @@ TareaServ_Est2
                 bclr Banderas_2,LCD_OK
 
                 bclr Banderas_1,ShortP1
-                ;bset DDRP,$0F
-                ;bset PTP,$0F
 
                 movb #tTimerVel,TimerVel
                 movw #TareaServ_Est3,Est_Pres_TServ
@@ -720,8 +718,6 @@ TareaServ_Est3
                 movb #$80,Dsp4  ;TODO
                 movb #$80,Dsp3  ;TODO
                 jsr Calcula
-                nop
-                nop
                 ldaa Vel_Calc
                 ;cmpa #20
                 ; verificar si la velocidad se encuentra en el rango aceptable
@@ -747,7 +743,7 @@ est3_go_error
                 movb #tTimerError,TimerError    ; carga de timer de error
                 movw #TareaServ_Est5,Est_Pres_TServ ; y se pasa al estado 5
 retEnServ_est3
-                        bset DDRP,$0F
+                bset DDRP,$0F
                 bset PTP,$0F                ; apagar 7 segmentos
                 bclr Banderas_1,ShortP0     ; borrar banderas de ShortP
                 bclr Banderas_1,ShortP1     ; para ser reutilizable
@@ -789,15 +785,15 @@ es4_go_alarm    ; solo si la velocidad del vehiculo supera el límite
 
 EnServ4_to6     movw #TareaServ_Est6,Est_Pres_TServ
 retEnServ_est4
-                        bset DDRP,$03
+                bset DDRP,$03
                 bset PTP,$03
-                        rts
+                rts
 
 ;========================== EnServicio ESTADO 5 ================================
 ;   Este estado solo se accede cuando la velocidad del vehículo no se encuentra
 ;   entre los límites del sensor (45 hasta 99 km/h). En este estado se espera a
-;   que se acabe el timer de error, para que se deje de desplegar el mensaje de
-;   error y pase al estado inicial.
+;   que se acabe el timer de error (3 segundos), para que se deje de desplegar 
+;   el mensaje de error y pase al estado inicial.
 TareaServ_Est5
                 tst TimerError
                 bne retEnServ_est5
@@ -825,7 +821,8 @@ retEnServ_est6  rts
 ;******************************************************************************
 ;   Esta tarea se encarga de desplazar los cinco leds MSB de izquierda a derecha,
 ;   un led a la vez. Utiliza la bandera DsplzIzquierda para saber si está
-;   recorriendo de izquiera a derecha o viceversa.
+;   recorriendo de izquiera a derecha o viceversa, y se hace mayormente 
+;   visible cuando el vehículo supera la velocidad límite (Alarma = 1).
 Tarea_DsplzLeds
                 ldx Est_Pres_DsplzLeds
                 jsr 0,x
@@ -839,16 +836,15 @@ DsplzLeds_Est1
                 movw #DsplzLeds_Est2,Est_Pres_DsplzLeds
                 movb #tTimerDplzLeds,TimerDplzLeds
                 movb #$80,DplzLeds
-                
-
-
 retDsplzLeds_est1
-                bclr LEDS,$F8
+                bclr LEDS,$F8   ; Borrar los 5 leds de la parte alta
                 rts
 ;========================== DsplzLeds ESTADO 1 ================================
 ;   En el estado 2 se comprueba el valor actual del patrón de LEDS. Si se
 ;   determina que llegó al final de la respectiva orientación, cambia el valor
-;   de la bandera, para recorrer el patrón de la manera inversa.
+;   de la bandera, para recorrer el patrón de la manera inversa. De lo contrario
+;   solo desplaza a la izquierda o derecha, dependiendo del valor de 
+;   DsplzIzquierda
 DsplzLeds_Est2
                 tst TimerDplzLeds
                 bne retDsplzLeds_est2
@@ -872,7 +868,7 @@ cambiarADer     ; llegó al final de la izquierda - cambiar a der-izq
                 bclr Banderas_2,DsplzIzquierda
 
 dplz2_join      movb DplzLeds,LEDS ; se carga el valor a los LEDS
-                bset LEDS,LDEnServ
+                bset LEDS,LDEnServ ; poner LED de EnServicio 
 
                 brset Banderas_2,Alarma,reloadLedTimer
                 movw #DsplzLeds_Est1,Est_Pres_DsplzLeds
@@ -937,14 +933,11 @@ TareaBrillo_Est3
                 ldd ADR00H      ; Se suman las dos conversiones por ciclo
                 addd ADR01H     
                 lsrd            ; se divide entre dos para obtener el promedio
-                nop
-                nop
                 bset ATD0STAT0,MaskSCF  ; se limpia la bandera de SCF
                 movw #TareaBrillo_Est1,Est_Pres_TBrillo
                 movb #$00,ATD0CTL2      ; se apaga el enable, ADPU = 0
                 movb #$07,ATD0CTL5      ; se escribe en el reg de control 5
-                ;stab BCD2              ; necesario para limpiar la bandera SCF
-                ;staa BCD1
+                                        ; necesario para limpiar la bandera SCF
                 ; valor guardado en A
                 ; transformacion: brillo =  ((acumA*100)/255))
                 tab
@@ -960,10 +953,7 @@ TareaBrillo_Est3
                 xgdx     ; transfiero valor a acumulador b
                 pulx
                 stab Brillo     ; guardo valor en variable Brillo
-                ;stab BIN1
-                ;nop
-
-
+                
 ret_brillo_est3 rts
 
 ;******************************************************************************
