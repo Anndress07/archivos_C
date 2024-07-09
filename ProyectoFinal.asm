@@ -14,11 +14,11 @@
  ;
  ;    Por medio de los DIP SWITCHES (PH7 y PH6) se escoje el modo de operación
  ;    de la aplicación, siendo los modos: inactivo, configuración, y en servicio.
- ;    El sistema hace uso extensivo de la pantalla LCD, 7 segmentos y LEDS para 
+ ;    El sistema hace uso extensivo de la pantalla LCD, 7 segmentos y LEDS para
  ;    desplegar información. También hace uso del convertidor analógico digital
- ;    0 para controlar el brillo de los leds y 7 segmentos por medio del 
- ;    potenciómetro trimmer conectado al puerto 7 del ATD0. 
- ;    
+ ;    0 para controlar el brillo de los leds y 7 segmentos por medio del
+ ;    potenciómetro trimmer conectado al puerto 7 del ATD0.
+ ;
  ;    En cuanto a la estructura del programa, se sigue el siguiente orden
  ;              1. Relocalización de vector de interrupción OC5
  ;              2. Declaración de valores del sistema
@@ -47,7 +47,7 @@
  ;                      6.6 Subrutina Leer_Teclado
  ;              7. Máquina de tiempos
  ;                      7.1 Subrutina Decre_Timers_BaseT
- ;                      7.2 Subrutina Decre_Timers                        
+ ;                      7.2 Subrutina Decre_Timers
  ;==============================================================================
 
  ;******************************************************************************
@@ -437,7 +437,7 @@ skipLCD
 ;   leyendo los DIPS7-6 (Valor_DS)
 ;   El valor sin suprimir se guarda en Temp_DS y el valor ya suprimido se
 ;   carga en Valor_DS.
-;       Modifica: Valor_DS, variable de un byte en memoria 
+;       Modifica: Valor_DS, variable de un byte en memoria
 Tarea_LeerDS
                 ldx Est_Pres_LeerDS
                 jsr 0,x
@@ -445,19 +445,19 @@ FinLeerDS       rts
 
 ;============================ LeerDS ESTADO 1 =================================
 ;   El primer estado verifica si Valor_DS es igual a PTIH (puerto de DipSwitches)
-;   esto para ver si los dipswitches han sido modificados y deben suprimirse los 
+;   esto para ver si los dipswitches han sido modificados y deben suprimirse los
 ;   rebotes. Si no han sido modificados, se pasa a la parte de control de modo
 ;
 ;   El control de modo selecciona el estado del RADAR 623 dependiendo de DIPS.7
 ;   y DIPS.6, si son 00 es Modo Inactivo, si son 01 es Modo Configurar, y si es
-;   11 es Modo EnServicio. 
-;   Cuando se escoge un modo, los demás modos se regresan al estado inicial. 
+;   11 es Modo EnServicio.
+;   Cuando se escoge un modo, los demás modos se regresan al estado inicial.
 TareaLeerDS_Est1
 
                 ldaa PTIH
                 cmpa Valor_DS
                 beq DS_ControlModo LeerDS_supr_reb
-                ; PTIH y Valor_DS no son iguales, se pasa al estado 2 
+                ; PTIH y Valor_DS no son iguales, se pasa al estado 2
                 ; (suprimir rebotes)
                 movb PTIH,Temp_DS
                 movw #TareaLeerDS_Est2,Est_Pres_LeerDS
@@ -671,7 +671,7 @@ Tarea_EnServicio
 ;========================== EnServicio ESTADO 1 ================================
 ;   Se cargan los mensajes en la pantalla LCD y se apagan los 7 segmentos.
 ;   Pasa siempre al próximo estado.
-TareaServ_Est1  
+TareaServ_Est1
                 bset LEDS,LDEnServ
                 movw #MSG_RADAR623,Msg_L1
                 movw #MSG_ENSERV_WAIT,Msg_L2
@@ -792,7 +792,7 @@ retEnServ_est4
 ;========================== EnServicio ESTADO 5 ================================
 ;   Este estado solo se accede cuando la velocidad del vehículo no se encuentra
 ;   entre los límites del sensor (45 hasta 99 km/h). En este estado se espera a
-;   que se acabe el timer de error (3 segundos), para que se deje de desplegar 
+;   que se acabe el timer de error (3 segundos), para que se deje de desplegar
 ;   el mensaje de error y pase al estado inicial.
 TareaServ_Est5
                 tst TimerError
@@ -821,7 +821,7 @@ retEnServ_est6  rts
 ;******************************************************************************
 ;   Esta tarea se encarga de desplazar los cinco leds MSB de izquierda a derecha,
 ;   un led a la vez. Utiliza la bandera DsplzIzquierda para saber si está
-;   recorriendo de izquiera a derecha o viceversa, y se hace mayormente 
+;   recorriendo de izquiera a derecha o viceversa, y se hace mayormente
 ;   visible cuando el vehículo supera la velocidad límite (Alarma = 1).
 Tarea_DsplzLeds
                 ldx Est_Pres_DsplzLeds
@@ -843,7 +843,7 @@ retDsplzLeds_est1
 ;   En el estado 2 se comprueba el valor actual del patrón de LEDS. Si se
 ;   determina que llegó al final de la respectiva orientación, cambia el valor
 ;   de la bandera, para recorrer el patrón de la manera inversa. De lo contrario
-;   solo desplaza a la izquierda o derecha, dependiendo del valor de 
+;   solo desplaza a la izquierda o derecha, dependiendo del valor de
 ;   DsplzIzquierda
 DsplzLeds_Est2
                 tst TimerDplzLeds
@@ -868,7 +868,7 @@ cambiarADer     ; llegó al final de la izquierda - cambiar a der-izq
                 bclr Banderas_2,DsplzIzquierda
 
 dplz2_join      movb DplzLeds,LEDS ; se carga el valor a los LEDS
-                bset LEDS,LDEnServ ; poner LED de EnServicio 
+                bset LEDS,LDEnServ ; poner LED de EnServicio
 
                 brset Banderas_2,Alarma,reloadLedTimer
                 movw #DsplzLeds_Est1,Est_Pres_DsplzLeds
@@ -931,7 +931,7 @@ ret_brillo_est2
 TareaBrillo_Est3
                 brclr ATD0STAT0,MaskSCF,ret_brillo_est3
                 ldd ADR00H      ; Se suman las dos conversiones por ciclo
-                addd ADR01H     
+                addd ADR01H
                 lsrd            ; se divide entre dos para obtener el promedio
                 bset ATD0STAT0,MaskSCF  ; se limpia la bandera de SCF
                 movw #TareaBrillo_Est1,Est_Pres_TBrillo
@@ -953,7 +953,7 @@ TareaBrillo_Est3
                 xgdx     ; transfiero valor a acumulador b
                 pulx
                 stab Brillo     ; guardo valor en variable Brillo
-                
+
 ret_brillo_est3 rts
 
 ;******************************************************************************
@@ -974,13 +974,11 @@ FinTareaTCL             rts
 ;    tecla si fue presionada, carga el timer de supresión de rebotes y cambia
 ;    al estado 2.
 TareaTCL_Est1
-                        ;movb #$FF,Tecla
-                        ;movb #$F5,Tecla_IN
+
                         jsr Leer_Teclado
                         staa Tecla
                         cmpa #$FF
                         beq ret_Teclado
-                        ;movb Tecla,Tecla_IN
                         Movb #tSuprRebTCL,Timer_RebTCL
                         movw #TareaTCL_Est2,Est_Pres_TCL
 ret_Teclado             rts
@@ -1572,7 +1570,7 @@ BCD_BIN
 ;   CALCULA se encarga de calcular las variables necesarias para la tarea
 ;   EnServicio del RADAR623.
 ;   Recibe: El valor del timer TimerVel
-;   Entrega: las siguientes variables en memoria 
+;   Entrega: las siguientes variables en memoria
 ;           -DeltaT (diferencia de tiempos entre sensor 1 y 2, décimas de segundo)
 ;           -Vel_Calc (Velocidad del vehículo en km/h)
 ;           -TimerPant (tiempo que le toma estar a 100 metros de la pantalla,
@@ -1604,17 +1602,17 @@ Calcula
                 stab Vel_Calc       ; guardo parte baja como Vel_Calc
 
                 clra
-                ldab Vel_Calc   
+                ldab Vel_Calc
                 xgdx      ; se coloca únicamente Vel_Calc en acum. X (divisor)
-                ldd #7200    ; se carga numerador 
-                idiv            
+                ldd #7200    ; se carga numerador
+                idiv
                 xgdx         ; se traslada resultado a acumulador D
                 stab TimerPant
 
                 clra
-                ldab Vel_Calc 
+                ldab Vel_Calc
                 xgdx  ; se coloca únicamente Vel_Calc en acum. X (divisor)
-                ldd #10800 ; se carga numerador 
+                ldd #10800 ; se carga numerador
                 idiv
                 xgdx  ; se traslada resultado a acumulador D
                 stab TimerFinPant
@@ -1625,22 +1623,22 @@ Calcula
 ; ============================= Subrutina Bin_BCD_MuxP =========================
 ; ==============================================================================
 ;  Convierte en BCD un número binario de 8 bits usando el algoritmo XS3 visto en
-;  clase. 
+;  clase.
 ;       Recibe: Número binario de 1 byte por el acumulador a
 ;       Devuevle: el número en BCD en la variable BCD en memoria
 Bin_BCD_MuxP
                 pshy
                 pshd    ; Guardo acumuladores en la pila, serán utilizados en la
-                pshx    ; subrutina actual. 
+                pshx    ; subrutina actual.
                 ldx #7  ; Contador para procesar 1 byte
                 ldab #0 ; Limpio variables, van a ser utilizadas en la subrutina.
                 clr BCD
 
 loop_bintobcd
-                lsla    
+                lsla
                 rol BCD
                 psha    ; Guar
-                pshx    ; Guardo    
+                pshx    ; Guardo
 check_magnitude
                 ldaa BCD
                 anda #$0F
@@ -1687,7 +1685,7 @@ BCD_7Seg                                                    ;-
                 ldaa BCD1
                 bra loop_7seg
 BCD_2           staa Dsp1
-                stab Dsp2 
+                stab Dsp2
                 iny
                 ldaa BCD2
                 bra loop_7seg
@@ -1789,25 +1787,27 @@ exit_InitLCD            rts
 ;   una tecla. Dependiendo del bit LSB que se hace 0, y dependiendo del valor
 ;   actual de la máscara PATRON, se puede saber cuál fue la tecla presionada.
 
-Leer_Teclado            movb #$EF,PATRON    ; Patrón inicia con un 0 en bit 4
+Leer_Teclado    movb #$EF,PATRON    ; Patrón inicia con un 0 en bit 4
                 ldx #Teclas         ; carga dirección de teclas
-loop_leer_teclado       movb PATRON,PORTA
-                ;clrb
+loop_leer_teclado
+                movb PATRON,PORTA
                 nop
                 nop
                 nop
-                ; si el bit 3 se hizo 0, significa que se presionó 
+                nop
+                nop
+                ; si el bit 3 se hizo 0, significa que se presionó
                 ;alguna tecla de la columna 3
-                brclr PORTA,$04,tcl_colu2       
-                ; si el bit 2 se hizo 0, significa que se presionó 
+                brclr PORTA,$04,tcl_colu2
+                ; si el bit 2 se hizo 0, significa que se presionó
                 ; de la columna 2
                 brclr PORTA,$02,tcl_colu1
                 ; si el bit 1 ser hizo 0, se presionó de la columna 1
                 brclr PORTA,$01,tcl_colu0
                 ; si el bit 0 se hizo 0, se presionó de la columna 0
                 orcc #$01       ; Fuerzo un 1 en el carry
-                rol PATRON      ; para desplazar con 1s
-                ldab PATRON     ; me fijo si el PATRON ya se llenó de 1s
+                rol PATRON      ;# para desplazar con 1s
+                ldab PATRON     ;# me fijo si el PATRON ya se llenó de 1s
                 cmpb #$FF       ; mientras no este lleno de 1s, salta
                 bne loop_leer_teclado   ; al loop de leer teclado
                 ldaa #$FF       ; Cargo $FF cuando una tecla NO fue presionada
@@ -1894,7 +1894,7 @@ digE            ldab #11
                 ldaa b,x
                 staa Tecla
 ; -------------------------------------------
-exit_leer_teclado       
+exit_leer_teclado
                 nop
                 nop
                 nop
@@ -1905,26 +1905,26 @@ exit_leer_teclado
 ;                  SUBRUTINA DE ATENCION A OC5, MAQUINA DE TIEMPOS
 ;******************************************************************************
 ;  Maneja toda la base de tiempos de la aplicación. Usa la interrupción OC5 para
-;  interrumpir cada 20 us y decrementar los timers en la Tabla de timers. 
+;  interrumpir cada 20 us y decrementar los timers en la Tabla de timers.
 ;  Hace uso de la subrutina Decre_Timers_BaseT que se encarga de decrementar los timers
-;  de la tabla de dos bytes y Decre_Timers que decrementa los de un byte. 
-;       Recibe: Las variables de la tabla de timers ubicada en memoria y las 
-;               decrementa. 
+;  de la tabla de dos bytes y Decre_Timers que decrementa los de un byte.
+;       Recibe: Las variables de la tabla de timers ubicada en memoria y las
+;               decrementa.
 
 Maquina_Tiempos:
-               
-               ldx #Tabla_Timers_BaseT    
-               jsr Decre_Timers_BaseT   
 
-               ldd Timer1mS     
+               ldx #Tabla_Timers_BaseT
+               jsr Decre_Timers_BaseT
+
+               ldd Timer1mS
                bne check_10ms ; si no es cero, revise el siguiente timer
                 ; si se entra aquí, significa que el timer de 1mS se hizo 0
                Movw #tTimer1mS,Timer1mS ; se recarga el timer
                ; hay que decrementar todos los timers de 1mS por uno
-               ldx #Tabla_Timers_Base1mS 
+               ldx #Tabla_Timers_Base1mS
                jsr Decre_Timers
-                ; los siguientes timers siguen el mismo procedimiento. 
-check_10ms     
+                ; los siguientes timers siguen el mismo procedimiento.
+check_10ms
                ldd Timer10mS
                bne check_100ms
 
@@ -1956,15 +1956,15 @@ exit_checking
 ; ==============================================================================
 ; ===== Subrutina de Maquina_Tiempos, Decre_Timers_BaseT
 ; ==============================================================================
-;  Subrutina de la máquina de tiempos que decrementa los timers de 2 bytes 
+;  Subrutina de la máquina de tiempos que decrementa los timers de 2 bytes
 ;  (Timers BaseT)
 Decre_Timers_BaseT
-                ldy 2,x+        
+                ldy 2,x+
                 beq Decre_Timers_BaseT
                 cpy #$FFFF   ; Si no se ha alcanzado el fin de la tabla de timers
                              ; baseT, siga decrementando
                 bne dec_timer
-                bra exit_decre_tt 
+                bra exit_decre_tt
 dec_timer
                 dey
                 sty -2,x
@@ -1975,17 +1975,17 @@ exit_decre_tt   rts
 ; ==============================================================================
 ; ===== Subrutina de Maquina_Tiempos, Decre_Timers
 ; ==============================================================================
-;  Subrutina de la máquina de tiempos que decrementa los timers de 1 byte. 
+;  Subrutina de la máquina de tiempos que decrementa los timers de 1 byte.
 ;  (Tabla_Timers_BaseXXXXs)
 Decre_Timers
                 ldaa 0,x
                 beq inc_decre_timers
                 cmpa #$FF  ; Si no se ha alcanzado el fin de la tabla de timers
-                             ;siga decrementando     
+                             ;siga decrementando
                 beq exit_decre_timers
                 dec 0,x
 ; para incrementar la dirección con la que se indexa la tabla timers
-inc_decre_timers  
+inc_decre_timers
                 inx
                 bra Decre_Timers
 exit_decre_timers
