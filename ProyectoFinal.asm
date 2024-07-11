@@ -1791,11 +1791,35 @@ Leer_Teclado    movb #$EF,PATRON    ; Patrón inicia con un 0 en bit 4
                 ldx #Teclas         ; carga dirección de teclas
 loop_leer_teclado
                 movb PATRON,PORTA
+                ; bloque de 20 NOP para esperar a que se descarguen las
+                ; capacitancias parasíticas del teclado.
+                ; Con 10 NOP los errores de lectura persistían
+                ; con 15 se reducían considerablemente
+                ; con 20 funcionan todas las veces
                 nop
                 nop
                 nop
                 nop
                 nop
+                
+                nop
+                nop
+                nop
+                nop
+                nop
+                
+                nop
+                nop
+                nop
+                nop
+                nop
+                
+                nop
+                nop
+                nop
+                nop
+                nop
+
                 ; si el bit 3 se hizo 0, significa que se presionó
                 ;alguna tecla de la columna 3
                 brclr PORTA,$04,tcl_colu2
