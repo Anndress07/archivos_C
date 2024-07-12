@@ -456,7 +456,7 @@ TareaLeerDS_Est1
 
                 ldaa PTIH
                 cmpa Valor_DS
-                beq DS_ControlModo LeerDS_supr_reb
+                beq DS_ControlModo ;
                 ; PTIH y Valor_DS no son iguales, se pasa al estado 2
                 ; (suprimir rebotes)
                 movb PTIH,Temp_DS
@@ -468,7 +468,7 @@ TareaLeerDS_Est1
 
 DS_ControlModo  brset Valor_DS,$80,Dip7on
                 brset Valor_DS,$40,Dip6on
-                ; 0 0 -------------- TAREA MODO INACTIVA
+                ; 0 0 -------------- TAREA MODO INACTIVO
                 jsr Tarea_ModoInactivo
                 bclr LEDS,LDConfig              ; apago leds de otras tareas
                 bclr LEDS,LDEnServ
@@ -533,7 +533,7 @@ Tarea_ModoInactivo
 ;   también apaga los display de 7 segmentos. Siempre pasa al segundo estado.
 TInac_Est1
                 bset LEDS,LDInac
-                movw #MSG_RADAR623,Msg_L1  ;Colocación de mensajes en los punteros
+                movw #MSG_RADAR623,Msg_L1  ;Colocar mensajes en los punteros
                 movw #MSG_INACTIV,Msg_L2
                 bclr Banderas_2,LCD_OK  ; borrar para correr LCD
 
@@ -557,7 +557,6 @@ mostrarInactivo
                 movb BCD,BCD2                       ; Colocar velocidad límite
                 jsr BCD_7Seg                        ; en 7 Dsp3, Dsp4
                 movw #TInac_Est3,Est_Pres_TInac
-                ;bra just_ret_tinac2
 
 ret_TInac_est2
 
@@ -599,7 +598,6 @@ Tarea_Configurar
 ;   no previstos.
 TareaConfig_Est1
                 bset LEDS,LDConfig
-                ;bclr Banderas_2,SecondLine
                 movw #MSG_CONFIG2,Msg_L2
                 movw #MSG_CONFIG1,Msg_L1
                 bclr Banderas_2,LCD_OK
@@ -631,15 +629,13 @@ TareaConfig_Est2
                 staa ValorLIM
                 jsr Bin_BCD_MuxP
                 movb BCD,BCD2
-                bset DDRP,$03   ; enciende displays de la derecha
-                bset PTP,$03
                 jsr BCD_7Seg
                 movb ValorLIM,Vel_LIM   ;se actualiza Vel_LIM
 
 est2_conf_borrartcl
                 jsr Borrar_NumArray
                 bclr Banderas_1,Array_OK
-retConfig_est2  bset DDRP,$03
+retConfig_est2  bset DDRP,$03   ; enciende displays de la derecha
                 bset PTP,$03
                 rts
 
@@ -672,7 +668,7 @@ Tarea_EnServicio
 ;   Se cargan los mensajes en la pantalla LCD y se apagan los 7 segmentos.
 ;   Pasa siempre al próximo estado.
 TareaServ_Est1
-                bset LEDS,LDEnServ
+
                 movw #MSG_RADAR623,Msg_L1
                 movw #MSG_ENSERV_WAIT,Msg_L2
                 bclr Banderas_2,LCD_OK
@@ -683,6 +679,7 @@ TareaServ_Est1
 
                 bset DDRP,$0F
                 bset PTP,$0F
+                bset LEDS,LDEnServ
 
                 movw #TareaServ_Est2,Est_Pres_TServ
                 rts
@@ -713,18 +710,14 @@ retEnServ_est2  bset DDRP,$0F
 ;   estado.
 TareaServ_Est3
                 brclr Banderas_1,ShortP0,retEnServ_est3
-                ;movb #$55,BCD2
-                ;jsr BCD_7Seg
                 movb #$80,Dsp4  ;TODO
                 movb #$80,Dsp3  ;TODO
                 jsr Calcula
                 ldaa Vel_Calc
-                ;cmpa #20
                 ; verificar si la velocidad se encuentra en el rango aceptable
                 cmpa #VelocMin      ; mayor a 45 km/h?
                 bls est3_go_error
                 cmpa #VelocMax      ; menor a 99 km/h?
-                ;cmpa #200
                 bhs est3_go_error
                 movw #TareaServ_Est4,Est_Pres_TServ ; si se encuentra en el rango
                                                     ; pasa al estado 4.
@@ -1627,9 +1620,9 @@ Calcula
 ;       Recibe: Número binario de 1 byte por el acumulador a
 ;       Devuevle: el número en BCD en la variable BCD en memoria
 Bin_BCD_MuxP
-                pshy
-                pshd    ; Guardo acumuladores en la pila, serán utilizados en la
-                pshx    ; subrutina actual.
+                ;pshy
+                ;pshd    ; Guardo acumuladores en la pila, serán utilizados en la
+                ;pshx    ; subrutina actual.
                 ldx #7  ; Contador para procesar 1 byte
                 ldab #0 ; Limpio variables, van a ser utilizadas en la subrutina.
                 clr BCD
@@ -1639,11 +1632,11 @@ loop_bintobcd
                 rol BCD
                 psha    ; Guar
                 pshx    ; Guardo
-check_magnitude
+
                 ldaa BCD
                 anda #$0F
                 cmpa #5
-mayora5
+
                 blt mayora5_next
                 adda #$03
 mayora5_next
@@ -1651,7 +1644,7 @@ mayora5_next
                 ldaa BCD
                 anda #$F0
                 cmpa #$50
-mayora50
+
                 blt mayora50_end
                 adda #$30
 mayora50_end
@@ -1664,9 +1657,9 @@ mayora50_end
                 bne loop_bintobcd
                 lsla
                 rol BCD
-                pulx
-                puld
-                puly
+                ;pulx
+                ;puld
+                ;puly
 
                 rts
 
@@ -1796,29 +1789,12 @@ loop_leer_teclado
                 ; Con 10 NOP los errores de lectura persistían
                 ; con 15 se reducían considerablemente
                 ; con 20 funcionan todas las veces
-                nop
-                nop
-                nop
-                nop
-                nop
-                
-                nop
-                nop
-                nop
-                nop
-                nop
-                
-                nop
-                nop
-                nop
-                nop
-                nop
-                
-                nop
-                nop
-                nop
-                nop
-                nop
+
+                ldab #20
+loop_cap_parasit nop
+                dbne b,loop_cap_parasit
+                ; el código continua su flujo cuando se ejecutan los 20 nop
+
 
                 ; si el bit 3 se hizo 0, significa que se presionó
                 ;alguna tecla de la columna 3
@@ -1830,8 +1806,8 @@ loop_leer_teclado
                 brclr PORTA,$01,tcl_colu0
                 ; si el bit 0 se hizo 0, se presionó de la columna 0
                 orcc #$01       ; Fuerzo un 1 en el carry
-                rol PATRON      ;# para desplazar con 1s
-                ldab PATRON     ;# me fijo si el PATRON ya se llenó de 1s
+                rol PATRON      ; para desplazar con 1s
+                ldab PATRON     ; me fijo si el PATRON ya se llenó de 1s
                 cmpb #$FF       ; mientras no este lleno de 1s, salta
                 bne loop_leer_teclado   ; al loop de leer teclado
                 ldaa #$FF       ; Cargo $FF cuando una tecla NO fue presionada
