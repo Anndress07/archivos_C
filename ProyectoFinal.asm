@@ -456,7 +456,7 @@ TareaLeerDS_Est1
 
                 ldaa PTIH
                 cmpa Valor_DS
-                beq DS_ControlModo ;
+                beq DS_ControlModo ; 
                 ; PTIH y Valor_DS no son iguales, se pasa al estado 2
                 ; (suprimir rebotes)
                 movb PTIH,Temp_DS
@@ -668,7 +668,7 @@ Tarea_EnServicio
 ;   Se cargan los mensajes en la pantalla LCD y se apagan los 7 segmentos.
 ;   Pasa siempre al próximo estado.
 TareaServ_Est1
-
+                
                 movw #MSG_RADAR623,Msg_L1
                 movw #MSG_ENSERV_WAIT,Msg_L2
                 bclr Banderas_2,LCD_OK
@@ -1664,7 +1664,7 @@ mayora50_end
                 rts
 
 ; ==============================================================================
-; ============================== Subrutina BCD-7Seg ============================
+; ============================== Subrutina BCD_7Seg ============================
 ; ==============================================================================
 ;   Esta subrutina se encarga de convertir los valores en las variables
 ;   BCD1 y BCD2, que ambas se encuentran en BCD, a formato de 7 segmentos.
@@ -1681,7 +1681,7 @@ BCD_2           staa Dsp1
                 stab Dsp2
                 iny
                 ldaa BCD2
-                bra loop_7seg
+                
 
 loop_7seg       psha            ; guardo BCD
                 anda #$F0       ; tomo la parte alta
@@ -1789,7 +1789,7 @@ loop_leer_teclado
                 ; Con 10 NOP los errores de lectura persistían
                 ; con 15 se reducían considerablemente
                 ; con 20 funcionan todas las veces
-
+                
                 ldab #20
 loop_cap_parasit nop
                 dbne b,loop_cap_parasit
